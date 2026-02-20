@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Galaxy Ho!</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:none;
+  font-family:-apple-system,'Segoe UI',system-ui,'Helvetica Neue',sans-serif}
+canvas{display:block}
+
+/* ── HUD ── */
+#hud{position:fixed;top:0;left:0;right:0;padding:20px 28px;display:flex;justify-content:space-between;align-items:center;
+  color:rgba(255,255,255,0.25);font-size:10px;letter-spacing:2.5px;text-transform:uppercase;pointer-events:none;z-index:20}
+#hud-location{font-size:12px;font-weight:500;color:rgba(255,255,255,0.55);letter-spacing:3px}
+
+/* ── Tooltip ── */
+#tooltip{position:fixed;display:none;padding:18px 22px;background:rgba(10,12,20,0.72);
+  border:1px solid rgba(255,255,255,0.07);border-radius:14px;
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  color:rgba(255,255,255,0.65);font-size:13px;z-index:30;pointer-events:auto;min-width:180px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.4)}
+#tt-name{font-size:15px;font-weight:600;color:rgba(255,255,255,0.9);margin-bottom:2px}
+#tt-class{font-size:10px;color:rgba(255,255,255,0.3);margin-bottom:10px;letter-spacing:1px;text-transform:uppercase}
+#tt-planets{font-size:12px;color:rgba(255,255,255,0.45);margin-bottom:14px}
+#tt-enter{display:block;width:100%;padding:9px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);
+  color:rgba(255,255,255,0.45);font-size:10px;border-radius:8px;cursor:pointer;letter-spacing:2px;text-transform:uppercase;
+  transition:all 0.25s;font-family:inherit}
+#tt-enter:hover{background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.8)}
+
+/* ── Back Button ── */
+#back-btn{position:fixed;top:18px;left:20px;padding:8px 16px;background:rgba(10,12,20,0.55);
+  border:1px solid rgba(255,255,255,0.07);border-radius:10px;color:rgba(255,255,255,0.35);font-size:11px;
+  cursor:pointer;z-index:30;display:none;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  transition:all 0.25s;letter-spacing:1.5px;text-transform:uppercase;font-family:inherit}
+#back-btn:hover{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.65)}
+
+/* ── Info Card ── */
+#info-card{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);width:100%;max-width:400px;
+  padding:24px 28px 32px;background:rgba(10,12,20,0.78);
+  border:1px solid rgba(255,255,255,0.06);border-bottom:none;
+  border-radius:20px 20px 0 0;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  color:rgba(255,255,255,0.65);z-index:30;transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);
+  box-shadow:0 -8px 40px rgba(0,0,0,0.4)}
+#info-card.visible{transform:translateX(-50%) translateY(0)}
+#ic-close{position:absolute;top:16px;right:20px;background:none;border:none;color:rgba(255,255,255,0.18);
+  font-size:20px;cursor:pointer;padding:4px 8px;transition:color 0.2s}
+#ic-close:hover{color:rgba(255,255,255,0.45)}
+#ic-name{font-size:17px;font-weight:600;color:rgba(255,255,255,0.9);margin-bottom:4px}
+#ic-type{display:inline-block;padding:3px 10px;border-radius:20px;font-size:9px;letter-spacing:1.2px;
+  margin-bottom:16px;font-weight:500;text-transform:uppercase}
+
+.type-terran{background:rgba(80,200,120,0.10);color:rgba(80,200,120,0.65)}
+.type-desert{background:rgba(200,150,60,0.10);color:rgba(200,150,60,0.65)}
+.type-ice{background:rgba(130,190,240,0.10);color:rgba(130,190,240,0.65)}
+.type-gas_giant{background:rgba(180,140,80,0.10);color:rgba(180,140,80,0.65)}
+.type-lava{background:rgba(220,80,40,0.10);color:rgba(220,80,40,0.65)}
+.type-ocean{background:rgba(60,130,220,0.10);color:rgba(60,130,220,0.65)}
+
+.ic-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:12px}
+.ic-label{width:78px;color:rgba(255,255,255,0.25);flex-shrink:0;font-size:10px;letter-spacing:1px;text-transform:uppercase}
+.ic-bar{flex:1;height:2px;background:rgba(255,255,255,0.06);border-radius:1px;overflow:hidden}
+.ic-fill{height:100%;border-radius:1px;transition:width 0.5s cubic-bezier(0.16,1,0.3,1)}
+.ic-value{width:40px;text-align:right;font-weight:500;color:rgba(255,255,255,0.45);font-size:12px;font-variant-numeric:tabular-nums}
+.ic-atm{font-size:11px;color:rgba(255,255,255,0.25);margin-top:4px;margin-bottom:4px;letter-spacing:0.5px}
+#ic-special{margin-top:14px;padding:10px 14px;background:rgba(255,200,60,0.05);border:1px solid rgba(255,200,60,0.08);
+  border-radius:8px;color:rgba(255,200,60,0.55);font-size:11px;display:none;letter-spacing:0.3px}
+
+/* ── Overlay & Lock ── */
+#overlay{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:40;transition:opacity 0.4s}
+#overlay.active{opacity:1}
+
+#lock-msg{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);padding:10px 22px;
+  background:rgba(10,12,20,0.75);border:1px solid rgba(255,255,255,0.06);border-radius:10px;
+  color:rgba(255,255,255,0.3);font-size:11px;z-index:25;display:none;
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);white-space:nowrap;letter-spacing:0.5px}
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <span id="hud-location">Galaxy View</span>
+  <span id="hud-progress">0/100 explored</span>
+</div>
+
+<div id="tooltip">
+  <div id="tt-name"></div>
+  <div id="tt-class"></div>
+  <div id="tt-planets"></div>
+  <button id="tt-enter">Enter System &rarr;</button>
+</div>
+
+<button id="back-btn">&larr; Galaxy</button>
+
+<div id="info-card">
+  <button id="ic-close">&times;</button>
+  <div id="ic-name"></div>
+  <div id="ic-type"></div>
+  <div id="ic-stats"></div>
+  <div id="ic-special"></div>
+</div>
+
+<div id="overlay"></div>
+<div id="lock-msg">Explore more stars in adjacent clusters to unlock</div>
+
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

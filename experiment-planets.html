@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planet Rendering — B vs C Experiment</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #000;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+canvas { display: block; width: 100%; height: 100%; }
+
+/* ── Mode label (top center) ── */
+#mode-label {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  text-align: center;
+}
+#mode-label .title {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: rgba(130,200,255,.7);
+  text-transform: uppercase;
+}
+#mode-label .desc {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: rgba(255,255,255,.25);
+  margin-top: 4px;
+  max-width: 420px;
+}
+
+/* ── Top-left HUD ── */
+#hud {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 10;
+  color: rgba(255,255,255,.45);
+  font-size: 10px;
+  letter-spacing: 1px;
+  line-height: 2;
+}
+.hl { color: rgba(255,255,255,.25); }
+.hv { color: rgba(130,200,255,.8); }
+.hf { color: rgba(255,255,255,.3); font-style: italic; letter-spacing: .5px; }
+
+/* ── Top-right seed control ── */
+#seed-ctrl {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#seed-ctrl .label {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: rgba(255,255,255,.2);
+  text-transform: uppercase;
+}
+#seed-ctrl .seed-val {
+  font-size: 10px;
+  color: rgba(130,200,255,.6);
+  letter-spacing: 1px;
+  min-width: 40px;
+}
+.seed-btn {
+  padding: 4px 10px;
+  border: 1px solid rgba(255,255,255,.1);
+  background: rgba(0,0,0,.5);
+  color: rgba(255,255,255,.4);
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all .25s;
+  text-transform: uppercase;
+  backdrop-filter: blur(6px);
+}
+.seed-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
+
+/* ── Bottom controls ── */
+#controls {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 95vw;
+}
+.btn-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.pb {
+  padding: 5px 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(0,0,0,.7);
+  color: rgba(255,255,255,.55);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: .8px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all .3s;
+  text-transform: uppercase;
+  backdrop-filter: blur(6px);
+  white-space: nowrap;
+}
+.pb:hover { background: rgba(255,255,255,.08); color: #fff; }
+.pb.on {
+  border-color: rgba(100,180,255,.5);
+  color: #8cf;
+  background: rgba(100,180,255,.06);
+}
+.mode-btn {
+  padding: 6px 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(0,0,0,.6);
+  color: rgba(255,255,255,.4);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all .3s;
+  text-transform: uppercase;
+  backdrop-filter: blur(6px);
+}
+.mode-btn:hover { background: rgba(255,255,255,.06); color: rgba(255,255,255,.7); }
+.mode-btn.on {
+  border-color: rgba(255,200,100,.4);
+  color: rgba(255,200,100,.8);
+  background: rgba(255,200,100,.06);
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="mode-label">
+  <div class="title" id="ml-title">B · Hybrid</div>
+  <div class="desc" id="ml-desc">Texture base + procedural clouds, veins &amp; UV warping for variety</div>
+</div>
+
+<div id="hud">
+  <div><span class="hl">PLANET </span><span class="hv" id="pn"></span></div>
+  <div><span class="hl">TYPE </span><span class="hv" id="pt"></span></div>
+  <div><span class="hf" id="pf"></span></div>
+</div>
+
+<div id="seed-ctrl">
+  <span class="label">Seed</span>
+  <span class="seed-val" id="seed-val">0</span>
+  <button class="seed-btn" id="reseed-btn">Reseed</button>
+</div>
+
+<div id="controls">
+  <div class="btn-row" id="mode-row"></div>
+  <div class="btn-row" id="planet-row"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// PLANET CONFIGURATION — 7 types matching incoming/planets.html
+// ═══════════════════════════════════════════════════════════════
+
+const PLANETS = [
+  {
+    name: 'TRAPPIST-1 e',  type: 'Terran',
+    flavor: 'Earth-like · habitable zone',
+    texture: 'incoming/planet textures/2k_earth_daymap.jpg',
+    shader: 0,  // terrestrial
+    atmos: [0.30, 0.50, 1.00], atmosStr: 0.30, spinRate: 1.0,
+  },
+  {
+    name: 'Kepler-22 b',  type: 'Ocean',
+    flavor: 'Deep global ocean · thick atmosphere',
+    texture: 'incoming/planet textures/Kepler-22_b.jpg',
+    shader: 1,  // ocean
+    atmos: [0.15, 0.45, 0.35], atmosStr: 0.30, spinRate: 1.0,
+  },
+  {
+    name: '55 Cancri e',  type: 'Lava',
+    flavor: 'Molten surface · extreme metals',
+    texture: 'incoming/planet textures/2k_venus_surface.jpg',
+    shader: 2,  // lava
+    atmos: [0.70, 0.18, 0.04], atmosStr: 0.25, spinRate: 0.8,
+  },
+  {
+    name: 'HD 189733 b',  type: 'Gas Giant',
+    flavor: 'Hot Jupiter · silicate rain',
+    texture: 'incoming/planet textures/2k_jupiter.jpg',
+    shader: 3,  // gas
+    atmos: [0.12, 0.20, 0.45], atmosStr: 0.20, spinRate: 1.5,
+  },
+  {
+    name: 'Kepler-442 b',  type: 'Desert',
+    flavor: 'Arid super-Earth · high metals',
+    texture: 'incoming/planet textures/2k_mars.jpg',
+    shader: 4,  // desert
+    atmos: [0.55, 0.30, 0.12], atmosStr: 0.12, spinRate: 0.9,
+  },
+  {
+    name: 'GJ 1214 b',  type: 'Water',
+    flavor: 'Sub-Neptune · deep ocean · thick clouds',
+    texture: 'incoming/planet textures/HAT-P-11_b.jpg',
+    shader: 5,  // water
+    atmos: [0.20, 0.40, 0.85], atmosStr: 0.35, spinRate: 1.2,
+  },
+  {
+    name: 'OGLE-2005-BLG-390L b',  type: 'Ice',
+    flavor: 'Frozen world · rare elements',
+    texture: 'incoming/planet textures/OGLE-2005-BLG-390L_b.jpg',
+    shader: 6,  // ice
+    atmos: [0.40, 0.55, 0.70], atmosStr: 0.10, spinRate: 0.7,
+  },
+];
+
+const MODES = [
+  { id: 'B', label: 'B · Hybrid', desc: 'Texture base + procedural clouds, veins & UV warping for variety' },
+  { id: 'C', label: 'C · Procedural', desc: 'Pure noise-based surfaces with improved per-planet atmosphere & volumetric scatter' },
+];
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+
+let currentPlanet = 0;
+let currentMode = 0;        // 0 = B (hybrid), 1 = C (procedural)
+let planetSeed = 0;
+let rotX = 0.4, rotY = 0.15, zoom = 3.0;
+let dragging = false, lastMX = 0, lastMY = 0;
+
+// ═══════════════════════════════════════════════════════════════
+// UI SETUP
+// ═══════════════════════════════════════════════════════════════
+
+const modeRow = document.getElementById('mode-row');
+const planetRow = document.getElementById('planet-row');
+
+MODES.forEach((m, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'mode-btn' + (i === 0 ? ' on' : '');
+  btn.textContent = m.label;
+  btn.onclick = () => {
+    document.querySelectorAll('.mode-btn').forEach(x => x.classList.remove('on'));
+    btn.classList.add('on');
+    currentMode = i;
+    document.getElementById('ml-title').textContent = m.label;
+    document.getElementById('ml-desc').textContent = m.desc;
+  };
+  modeRow.appendChild(btn);
+});
+
+PLANETS.forEach((p, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'pb' + (i === 0 ? ' on' : '');
+  btn.textContent = p.type;
+  btn.onclick = () => {
+    document.querySelectorAll('.pb').forEach(x => x.classList.remove('on'));
+    btn.classList.add('on');
+    currentPlanet = i;
+    document.getElementById('pn').textContent = p.name;
+    document.getElementById('pt').textContent = p.type;
+    document.getElementById('pf').textContent = p.flavor;
+    loadTexture(p.texture);
+  };
+  planetRow.appendChild(btn);
+});
+
+document.getElementById('pn').textContent = PLANETS[0].name;
+document.getElementById('pt').textContent = PLANETS[0].type;
+document.getElementById('pf').textContent = PLANETS[0].flavor;
+
+document.getElementById('reseed-btn').onclick = () => {
+  planetSeed = Math.floor(Math.random() * 999);
+  document.getElementById('seed-val').textContent = planetSeed;
+};
+
+// ═══════════════════════════════════════════════════════════════
+// WEBGL SETUP
+// ═══════════════════════════════════════════════════════════════
+
+const cv = document.getElementById('c');
+const gl = cv.getContext('webgl', { antialias: false, alpha: false });
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio, 2);
+  cv.width = innerWidth * dpr;
+  cv.height = innerHeight * dpr;
+  gl.viewport(0, 0, cv.width, cv.height);
+}
+addEventListener('resize', resize);
+resize();
+
+cv.onmousedown = e => { dragging = true; lastMX = e.clientX; lastMY = e.clientY; };
+cv.onmousemove = e => {
+  if (!dragging) return;
+  rotX += (e.clientX - lastMX) * 0.004;
+  rotY += (e.clientY - lastMY) * 0.004;
+  rotY = Math.max(-1.5, Math.min(1.5, rotY));
+  lastMX = e.clientX; lastMY = e.clientY;
+};
+cv.onmouseup = cv.onmouseleave = () => dragging = false;
+cv.onwheel = e => {
+  zoom *= e.deltaY > 0 ? 1.05 : 0.95;
+  zoom = Math.max(1.5, Math.min(8, zoom));
+};
+cv.ontouchstart = e => { dragging = true; lastMX = e.touches[0].clientX; lastMY = e.touches[0].clientY; };
+cv.ontouchmove = e => {
+  if (!dragging) return;
+  rotX += (e.touches[0].clientX - lastMX) * 0.004;
+  rotY += (e.touches[0].clientY - lastMY) * 0.004;
+  rotY = Math.max(-1.5, Math.min(1.5, rotY));
+  lastMX = e.touches[0].clientX; lastMY = e.touches[0].clientY;
+};
+cv.ontouchend = () => dragging = false;
+
+// ═══════════════════════════════════════════════════════════════
+// TEXTURE MANAGEMENT
+// ═══════════════════════════════════════════════════════════════
+
+const tex = gl.createTexture();
+gl.activeTexture(gl.TEXTURE0);
+gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+  new Uint8Array([10, 10, 15, 255]));
+
+const textureCache = {};
+
+function loadTexture(path) {
+  if (textureCache[path]) { uploadTexture(textureCache[path]); return; }
+  const img = new Image();
+  img.onload = () => { textureCache[path] = img; uploadTexture(img); };
+  img.onerror = () => console.warn('Failed to load: ' + path);
+  img.src = path;
+}
+
+function uploadTexture(img) {
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+}
+
+loadTexture(PLANETS[0].texture);
+
+// ═══════════════════════════════════════════════════════════════
+// FULL-SCREEN QUAD
+// ═══════════════════════════════════════════════════════════════
+
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+// ═══════════════════════════════════════════════════════════════
+// SHADERS
+// ═══════════════════════════════════════════════════════════════
+
+const VERT = `
+attribute vec2 aPos;
+varying vec2 vUV;
+void main() {
+  vUV = aPos;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+
+const FRAG = `
+precision highp float;
+varying vec2 vUV;
+
+uniform vec2 uRes;
+uniform float uTime;
+uniform float uRotX;
+uniform float uRotY;
+uniform float uZoom;
+uniform sampler2D uTex;
+
+uniform int uShader;     // 0=terran,1=ocean,2=lava,3=gas,4=desert,5=water,6=ice
+uniform vec3 uAtmosCol;
+uniform float uAtmosStr;
+uniform float uSpinRate;
+uniform int uMode;       // 0=hybrid(B), 1=procedural(C)
+uniform float uSeed;     // 0-1 for variation
+
+// ═══════ Noise ═══════
+
+vec3 mod289(vec3 x){ return x - floor(x*(1./289.))*289.; }
+vec4 mod289(vec4 x){ return x - floor(x*(1./289.))*289.; }
+vec4 permute(vec4 x){ return mod289(((x*34.)+1.)*x); }
+vec4 taylorInvSqrt(vec4 r){ return 1.79284291400159 - .85373472095314*r; }
+
+float snoise(vec3 v){
+  const vec2 C = vec2(1./6., 1./3.);
+  const vec4 D = vec4(0.,.5,1.,2.);
+  vec3 i = floor(v + dot(v, C.yyy));
+  vec3 x0 = v - i + dot(i, C.xxx);
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min(g.xyz, l.zxy);
+  vec3 i2 = max(g.xyz, l.zxy);
+  vec3 x1 = x0 - i1 + C.xxx;
+  vec3 x2 = x0 - i2 + C.yyy;
+  vec3 x3 = x0 - D.yyy;
+  i = mod289(i);
+  vec4 p = permute(permute(permute(
+    i.z + vec4(0., i1.z, i2.z, 1.))
+    + i.y + vec4(0., i1.y, i2.y, 1.))
+    + i.x + vec4(0., i1.x, i2.x, 1.));
+  float n_ = .142857142857;
+  vec3 ns = n_ * D.wyz - D.xzx;
+  vec4 j = p - 49. * floor(p * ns.z * ns.z);
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7. * x_);
+  vec4 x = x_ * ns.x + ns.yyyy;
+  vec4 y = y_ * ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+  vec4 b0 = vec4(x.xy, y.xy);
+  vec4 b1 = vec4(x.zw, y.zw);
+  vec4 s0 = floor(b0)*2.+1.;
+  vec4 s1 = floor(b1)*2.+1.;
+  vec4 sh = -step(h, vec4(0.));
+  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+  vec3 p0 = vec3(a0.xy, h.x);
+  vec3 p1 = vec3(a0.zw, h.y);
+  vec3 p2 = vec3(a1.xy, h.z);
+  vec3 p3 = vec3(a1.zw, h.w);
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+  vec4 m = max(.6 - vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)), 0.);
+  m = m*m;
+  return 42.*dot(m*m, vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}
+
+float fbm4(vec3 p){
+  float f=0., a=.5;
+  for(int i=0; i<4; i++){ f += a*snoise(p); p *= 2.1; a *= .48; }
+  return f;
+}
+
+float fbm5(vec3 p){
+  float f=0., a=.5;
+  for(int i=0; i<5; i++){ f += a*snoise(p); p *= 2.0; a *= .5; }
+  return f;
+}
+
+// ═══════ Utility ═══════
+
+mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0,s, 0,1,0, -s,0,c); }
+mat3 rotXM(float a){ float c=cos(a),s=sin(a); return mat3(1,0,0, 0,c,-s, 0,s,c); }
+
+float raySphere(vec3 ro, vec3 rd, float r){
+  float b = dot(ro,rd);
+  float c = dot(ro,ro) - r*r;
+  float d = b*b - c;
+  if(d < 0.) return -1.;
+  return -b - sqrt(d);
+}
+
+vec2 raySphere2(vec3 ro, vec3 rd, float r){
+  float b = dot(ro,rd);
+  float c = dot(ro,ro) - r*r;
+  float d = b*b - c;
+  if(d < 0.) return vec2(-1.);
+  float sq = sqrt(d);
+  return vec2(-b-sq, -b+sq);
+}
+
+vec2 sphereUV(vec3 n){
+  float u = atan(n.z, n.x) / 6.28318 + 0.5;
+  float v = asin(clamp(n.y, -1., 1.)) / 3.14159 + 0.5;
+  return vec2(u, 1.0 - v);
+}
+
+vec3 aces(vec3 x){
+  return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0., 1.);
+}
+
+vec3 sunDir = normalize(vec3(1.0, 0.4, 0.6));
+
+// ═══════ Procedural surfaces (Mode C) ═══════
+
+vec3 surfTerran(vec3 nn, float time){
+  float cont = fbm5(nn*2.2);
+  float detail = fbm4(nn*5.+vec3(7.7))*0.2;
+  float landMask = smoothstep(-0.05, 0.12, cont+detail);
+  float elev = smoothstep(0.1, 0.6, cont);
+  float polar = smoothstep(0.7, 0.9, abs(nn.y)+cont*0.08);
+  vec3 ocean = mix(vec3(0.01,0.04,0.18), vec3(0.03,0.12,0.30), smoothstep(-0.4,0.,cont));
+  vec3 land = mix(vec3(0.12,0.25,0.06), vec3(0.22,0.18,0.08), smoothstep(0.2,0.5,elev));
+  land = mix(land, vec3(0.35,0.30,0.25), smoothstep(0.55,0.8,elev));
+  vec3 col = mix(ocean, land, landMask);
+  col = mix(col, vec3(0.90,0.93,0.97), polar);
+  float clouds = fbm5(nn*2.8 + vec3(time*0.008, 0., time*0.005));
+  clouds = smoothstep(0.05, 0.50, clouds);
+  col = mix(col, vec3(0.95,0.97,1.), clouds*0.50);
+  return col;
+}
+
+vec3 surfOcean(vec3 nn, float time){
+  float depth = fbm4(nn*1.8);
+  float curr = snoise(nn*3.5+vec3(time*0.006,0.,time*0.004))*0.15;
+  vec3 deep = vec3(0.005,0.015,0.10);
+  vec3 mid = vec3(0.015,0.06,0.20);
+  vec3 shallow = vec3(0.04,0.14,0.28);
+  float dv = depth*0.5+0.5+curr;
+  vec3 col = mix(deep, mid, smoothstep(0.3,0.55,dv));
+  col = mix(col, shallow, smoothstep(0.6,0.85,dv));
+  float isle = smoothstep(0.63, 0.66, depth);
+  col = mix(col, vec3(0.14,0.20,0.07), isle*0.5);
+  float cl = fbm5(nn*0.9+vec3(time*0.007,time*0.004,0.));
+  float cover = smoothstep(-0.10, 0.40, cl);
+  col = mix(col, vec3(0.88,0.92,0.96), cover*0.55);
+  return col;
+}
+
+vec3 surfLava(vec3 nn, float time){
+  float plates = fbm4(nn*2.);
+  float v1 = abs(snoise(nn*4.+vec3(time*0.005,0.,0.)));
+  float v2 = abs(snoise(nn*7.+vec3(0.,time*0.003,5.)));
+  float veins = 1.-smoothstep(0.,0.10,min(v1,v2));
+  float pools = smoothstep(-0.15,0.10,-plates);
+  float heat = clamp(veins*0.65+pools*0.50, 0., 1.);
+  float pulse = 0.90+0.10*sin(time*0.2+plates*4.);
+  vec3 crust = mix(vec3(0.04,0.03,0.025), vec3(0.10,0.07,0.05), plates*0.5+0.5);
+  vec3 magma = mix(vec3(0.70,0.10,0.), vec3(1.,0.55,0.05), heat);
+  return mix(crust, magma*pulse, heat);
+}
+
+vec3 surfGas(vec3 nn, float time){
+  float lat = nn.y;
+  float turb = fbm4(nn*1.5+vec3(time*0.002,0.,0.));
+  float bands = sin(lat*20.+turb*2.5)*0.5+0.5;
+  float fine = sin(lat*50.+turb*4.)*0.5+0.5;
+  bands = bands*0.7+fine*0.3;
+  vec3 dark = vec3(0.04,0.08,0.22);
+  vec3 mid = vec3(0.12,0.22,0.42);
+  vec3 light = vec3(0.30,0.45,0.60);
+  vec3 col = mix(dark, mid, bands);
+  col = mix(col, light, fine*0.3);
+  float eq = exp(-lat*lat*6.);
+  col = mix(col, vec3(0.20,0.30,0.45), eq*0.2);
+  float wisps = fbm4(nn*3.+vec3(lat*2.+time*0.003,0.,0.));
+  col += vec3(0.05,0.08,0.12)*smoothstep(0.2,0.6,wisps);
+  return col;
+}
+
+vec3 surfDesert(vec3 nn){
+  float terrain = fbm5(nn*2.5)*0.5+0.5;
+  float dunes = fbm4(nn*5.+vec3(8.))*0.5+0.5;
+  float craterMask = smoothstep(0.65,0.72, fbm4(nn*1.5*1.2)*0.5+0.5);
+  vec3 rust = vec3(0.52,0.20,0.08);
+  vec3 ochre = vec3(0.65,0.38,0.15);
+  vec3 sand = vec3(0.76,0.58,0.32);
+  vec3 col = mix(rust, ochre, terrain);
+  col = mix(col, sand, dunes*0.4);
+  col = mix(col, rust*0.5, craterMask*0.5);
+  float frost = smoothstep(0.90, 0.97, abs(nn.y));
+  col = mix(col, vec3(0.80,0.72,0.62), frost);
+  return col;
+}
+
+vec3 surfWater(vec3 nn, float time){
+  // Sub-Neptune: deep blue with very thick cloud cover
+  float depth = fbm4(nn*1.5);
+  vec3 deepCol = vec3(0.008,0.02,0.12);
+  vec3 midCol = vec3(0.02,0.08,0.25);
+  float dv = depth*0.5+0.5;
+  vec3 col = mix(deepCol, midCol, smoothstep(0.3,0.7,dv));
+  // Thick banded clouds
+  float lat = nn.y;
+  float bandNoise = fbm4(nn*2.+vec3(time*0.004,0.,0.));
+  float bands = sin(lat*12.+bandNoise*3.)*0.5+0.5;
+  float cl = fbm5(nn*1.2+vec3(time*0.006,time*0.003,0.));
+  float cover = smoothstep(-0.20, 0.30, cl);
+  cover = max(cover, bands*0.3);
+  vec3 cloudCol = mix(vec3(0.55,0.62,0.72), vec3(0.75,0.80,0.88), bands);
+  col = mix(col, cloudCol, cover*0.70);
+  return col;
+}
+
+vec3 surfIce(vec3 nn){
+  float terrain = fbm4(nn*2.)*0.5+0.5;
+  float cr1 = 1.-smoothstep(0.,0.06,abs(snoise(nn*5.)));
+  float cr2 = 1.-smoothstep(0.,0.04,abs(snoise(nn*3.5+vec3(20.))));
+  float cracks = max(cr1*0.8,cr2*0.5);
+  vec3 iceCol = mix(vec3(0.62,0.72,0.82), vec3(0.82,0.87,0.92), terrain);
+  iceCol = mix(iceCol, vec3(0.10,0.18,0.35), cracks);
+  float stain = smoothstep(0.55,0.70, fbm4(nn*1.8*1.2+vec3(40.))*0.5+0.5);
+  iceCol = mix(iceCol, vec3(0.72,0.65,0.55), stain*0.10);
+  return iceCol;
+}
+
+// ═══════ Hybrid surface helpers (Mode B) ═══════
+
+vec3 hybridSurface(vec3 nn, vec2 texUV, float time){
+  // Warp UVs based on seed for variety
+  vec2 warpedUV = texUV;
+  float seedOff = uSeed * 10.0;
+  warpedUV.x += fbm4(nn*2.0 + vec3(seedOff, 0., 0.)) * 0.04;
+  warpedUV.y += fbm4(nn*2.0 + vec3(0., seedOff, 5.)) * 0.025;
+
+  vec3 texCol = texture2D(uTex, warpedUV).rgb;
+
+  // Slight color grade shift per seed
+  float warmShift = (uSeed - 0.5) * 0.15;
+  texCol = mix(texCol, texCol * vec3(1.0+warmShift, 1.0, 1.0-warmShift), 0.4);
+
+  if(uShader == 0){
+    // TERRAN hybrid: texture + procedural clouds + polar caps
+    float clouds = fbm5(nn*2.8 + vec3(time*0.008, 0., time*0.005));
+    clouds = smoothstep(0.05, 0.50, clouds);
+    texCol = mix(texCol, vec3(0.95,0.97,1.), clouds*0.45);
+    float polar = smoothstep(0.72, 0.92, abs(nn.y) + fbm4(nn*3.)*0.08);
+    texCol = mix(texCol, vec3(0.90,0.93,0.97), polar * 0.6);
+
+  } else if(uShader == 1){
+    // OCEAN hybrid: texture + animated cloud cover + cyclones
+    float cl = fbm5(nn*0.9 + vec3(time*0.007, time*0.004, 0.));
+    float cover = smoothstep(-0.10, 0.40, cl);
+    float cyclone = snoise(vec3(atan(nn.z,nn.x)*1.5, nn.y*4., time*0.003));
+    cover += smoothstep(0.35, 0.55, cyclone)*0.15;
+    texCol = mix(texCol, vec3(0.88,0.92,0.96), clamp(cover,0.,1.)*0.55);
+
+  } else if(uShader == 2){
+    // LAVA hybrid: texture as crust + procedural emissive veins
+    float v1 = abs(snoise(nn*4. + vec3(time*0.005, 0., 0.)));
+    float v2 = abs(snoise(nn*7. + vec3(0., time*0.003, 5.)));
+    float veins = 1.-smoothstep(0., 0.10, min(v1,v2));
+    float pools = smoothstep(-0.15, 0.10, -fbm4(nn*2.));
+    float heat = clamp(veins*0.65 + pools*0.50, 0., 1.);
+    float pulse = 0.90+0.10*sin(time*0.2 + fbm4(nn*2.)*4.);
+    vec3 magma = mix(vec3(0.70,0.10,0.), vec3(1.,0.55,0.05), heat);
+    texCol = mix(texCol*0.6, magma*pulse, heat*0.8);
+
+  } else if(uShader == 3){
+    // GAS hybrid: texture + turbulent band distortion
+    float turb = fbm4(nn*1.5 + vec3(time*0.002, 0., 0.));
+    float wisps = fbm4(nn*3. + vec3(nn.y*2.+time*0.003, 0., 0.));
+    texCol *= 1.0 + turb*0.12;
+    texCol += vec3(0.04,0.06,0.10)*smoothstep(0.2,0.6,wisps);
+
+  } else if(uShader == 4){
+    // DESERT hybrid: texture + dust haze + dune detail
+    float dunes = fbm4(nn*5.+vec3(8.))*0.5+0.5;
+    texCol *= 0.85 + dunes*0.3;
+    // Subtle dust haze near equator
+    float dusty = exp(-nn.y*nn.y*8.) * fbm4(nn*1.5+vec3(time*0.002))*0.5;
+    texCol = mix(texCol, vec3(0.70,0.50,0.30), clamp(dusty,0.,1.)*0.15);
+
+  } else if(uShader == 5){
+    // WATER hybrid: texture + very thick banded clouds
+    float lat = nn.y;
+    float bandNoise = fbm4(nn*2. + vec3(time*0.004, 0., 0.));
+    float bands = sin(lat*12.+bandNoise*3.)*0.5+0.5;
+    float cl = fbm5(nn*1.2+vec3(time*0.006, time*0.003, 0.));
+    float cover = smoothstep(-0.20, 0.30, cl);
+    cover = max(cover, bands*0.3);
+    vec3 cloudCol = mix(vec3(0.55,0.62,0.72), vec3(0.75,0.80,0.88), bands);
+    texCol = mix(texCol, cloudCol, cover*0.65);
+
+  } else if(uShader == 6){
+    // ICE hybrid: texture + crack network overlay
+    float cr1 = 1.-smoothstep(0.,0.06,abs(snoise(nn*5.)));
+    float cr2 = 1.-smoothstep(0.,0.04,abs(snoise(nn*3.5+vec3(20.))));
+    float cracks = max(cr1*0.8, cr2*0.5);
+    texCol = mix(texCol, vec3(0.08,0.15,0.30), cracks*0.4);
+    float frost = smoothstep(0.85, 0.95, abs(nn.y));
+    texCol = mix(texCol, vec3(0.90,0.93,0.97), frost*0.3);
+  }
+
+  return texCol;
+}
+
+// ═══════ Main ═══════
+
+void main(){
+  vec2 uv = vUV;
+  float aspect = uRes.x / uRes.y;
+  uv.x *= aspect;
+
+  // Camera
+  vec3 camPos = rotY(uRotX) * rotXM(uRotY) * vec3(0., 0., uZoom);
+  vec3 fwd = normalize(-camPos);
+  vec3 right = normalize(cross(fwd, vec3(0.,1.,0.)));
+  vec3 up = cross(right, fwd);
+  vec3 rd = normalize(fwd + uv.x*right + uv.y*up);
+
+  float hit = raySphere(camPos, rd, 1.0);
+  vec3 col = vec3(0.);
+
+  // ── Planet surface ──
+  if(hit > 0.){
+    vec3 hitPos = camPos + rd*hit;
+    vec3 normal = normalize(hitPos);
+    vec3 viewDir = normalize(camPos - hitPos);
+
+    // Spin
+    float spin = uTime * 0.012 * uSpinRate;
+    vec3 texNormal = rotY(spin) * normal;
+
+    // Seed offset for procedural variety
+    vec3 nn = texNormal + vec3(uSeed*7.3, uSeed*3.7, uSeed*9.1);
+    vec2 texUV = sphereUV(texNormal);
+
+    vec3 surface;
+    bool emissive = false;
+
+    if(uMode == 0){
+      // ── MODE B: HYBRID ──
+      surface = hybridSurface(nn, texUV, uTime);
+      emissive = (uShader == 2);
+    } else {
+      // ── MODE C: PROCEDURAL ──
+      if     (uShader == 0) surface = surfTerran(nn, uTime);
+      else if(uShader == 1) surface = surfOcean(nn, uTime);
+      else if(uShader == 2){ surface = surfLava(nn, uTime); emissive = true; }
+      else if(uShader == 3) surface = surfGas(nn, uTime);
+      else if(uShader == 4) surface = surfDesert(nn);
+      else if(uShader == 5) surface = surfWater(nn, uTime);
+      else                  surface = surfIce(nn);
+    }
+
+    // ── Lighting (shared — improved model from planets.html) ──
+    float NdotL = dot(normal, sunDir);
+    float lit = smoothstep(-0.08, 0.20, NdotL);
+
+    if(emissive){
+      float glow = length(surface) / 1.73;
+      col = surface * (0.04 + lit*0.35) + surface*glow*1.1;
+      // Night-side lava glow
+      float nightGlow = smoothstep(0.1, -0.3, NdotL);
+      col += surface * nightGlow * 0.40;
+    } else {
+      col = surface * (0.035 + lit*0.95);
+
+      // Per-type specular
+      if(uShader == 0){
+        // Terran: specular on dark (water) areas
+        float brightness = dot(surface, vec3(0.3,0.5,0.2));
+        float waterMask = 1.-smoothstep(0.05, 0.18, brightness);
+        vec3 halfDir = normalize(sunDir + viewDir);
+        float spec = pow(max(dot(normal, halfDir), 0.), 60.);
+        col += vec3(1.,0.97,0.90)*spec*0.20*lit*waterMask;
+      } else if(uShader == 1 || uShader == 5){
+        // Ocean / Water: full-surface specular
+        vec3 halfDir = normalize(sunDir + viewDir);
+        float spec = pow(max(dot(normal, halfDir), 0.), 60.);
+        col += vec3(1.,0.98,0.92)*spec*0.35*lit;
+      } else if(uShader == 6){
+        // Ice: subtle cool specular
+        vec3 halfDir = normalize(sunDir + viewDir);
+        float spec = pow(max(dot(normal, halfDir), 0.), 40.);
+        col += vec3(0.9,0.95,1.)*spec*0.15*lit;
+      }
+      // Gas (3) and Desert (4): no specular
+    }
+
+    // ── Atmosphere rim glow (per-planet colors) ──
+    float NdotV = max(dot(normal, viewDir), 0.);
+    float rim = pow(1.0 - NdotV, 4.5);
+    col += uAtmosCol * rim * uAtmosStr * (0.25 + lit*0.75);
+  }
+
+  // ── Volumetric atmosphere scatter (6-step ray march) ──
+  {
+    float atmosRadius = 1.06;
+    vec2 atmosHit = raySphere2(camPos, rd, atmosRadius);
+
+    if(atmosHit.x > 0. || atmosHit.y > 0.){
+      float marchStart = max(atmosHit.x, 0.);
+      float marchEnd = atmosHit.y;
+      if(hit > 0.) marchEnd = min(marchEnd, hit);
+
+      if(marchStart < marchEnd){
+        float stepSize = (marchEnd - marchStart) / 6.;
+        vec3 scatter = vec3(0.);
+        float opticalDepth = 0.;
+
+        for(int i = 0; i < 6; i++){
+          float t = marchStart + (float(i)+0.5)*stepSize;
+          vec3 samplePos = camPos + rd*t;
+          float altitude = length(samplePos) - 1.0;
+          float density = exp(-altitude/0.2) * stepSize * 4.0;
+          opticalDepth += density;
+          float sunVis = smoothstep(-0.1, 0.35, dot(normalize(samplePos), sunDir));
+          scatter += uAtmosCol * density * sunVis * exp(-opticalDepth*1.2);
+        }
+
+        col += scatter * 3.5 * uAtmosStr / 0.30;
+      }
+    }
+  }
+
+  // ── Background stars ──
+  if(hit < 0.){
+    vec3 dir = normalize(rd);
+    float theta = acos(clamp(dir.y, -1., 1.));
+    float phi = atan(dir.z, dir.x);
+    for(int layer = 0; layer < 2; layer++){
+      float fl = float(layer);
+      float density = 140. + fl*90.;
+      vec2 grid = vec2(phi*density, theta*density);
+      vec2 cellId = floor(grid);
+      vec2 cellFrac = fract(grid) - 0.5;
+      float hash = fract(sin(dot(cellId+fl*50., vec2(127.1,311.7)))*43758.5453);
+      if(hash > 0.97){
+        vec2 starOff = vec2(
+          fract(sin(dot(cellId+fl*50., vec2(269.5,183.3)))*43758.5453),
+          fract(sin(dot(cellId+fl*50., vec2(419.2,371.9)))*43758.5453)
+        ) - 0.5;
+        float dist = length(cellFrac - starOff*0.5);
+        float brightness = (hash - 0.97)/0.03;
+        float twinkle = 0.7+0.3*sin(uTime*(1.+hash*3.)+hash*99.);
+        vec3 starCol = mix(vec3(0.6,0.7,1.), vec3(1.,0.9,0.7), fract(hash*7.));
+        col += starCol*exp(-dist*dist*1200.)*brightness*twinkle*(1.-fl*0.35)*0.3;
+      }
+    }
+  }
+
+  // ── Post-processing ──
+  col = aces(col * 1.2);
+  col *= 1.0 - 0.18*dot(vUV*0.5, vUV*0.5);
+  col = pow(col, vec3(0.97));
+  gl_FragColor = vec4(col, 1.);
+}
+`;
+
+// ═══════════════════════════════════════════════════════════════
+// SHADER COMPILATION
+// ═══════════════════════════════════════════════════════════════
+
+function makeShader(type, source) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, source);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    console.error('Shader compile error:', gl.getShaderInfoLog(sh));
+    return null;
+  }
+  return sh;
+}
+
+function makeProgram(vsSrc, fsSrc) {
+  const vs = makeShader(gl.VERTEX_SHADER, vsSrc);
+  const fs = makeShader(gl.FRAGMENT_SHADER, fsSrc);
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error('Shader link error:', gl.getProgramInfoLog(prog));
+    return null;
+  }
+  return prog;
+}
+
+const prog = makeProgram(VERT, FRAG);
+gl.useProgram(prog);
+
+const aPos = gl.getAttribLocation(prog, 'aPos');
+gl.enableVertexAttribArray(aPos);
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+const loc = {
+  uRes:       gl.getUniformLocation(prog, 'uRes'),
+  uTime:      gl.getUniformLocation(prog, 'uTime'),
+  uRotX:      gl.getUniformLocation(prog, 'uRotX'),
+  uRotY:      gl.getUniformLocation(prog, 'uRotY'),
+  uZoom:      gl.getUniformLocation(prog, 'uZoom'),
+  uTex:       gl.getUniformLocation(prog, 'uTex'),
+  uShader:    gl.getUniformLocation(prog, 'uShader'),
+  uAtmosCol:  gl.getUniformLocation(prog, 'uAtmosCol'),
+  uAtmosStr:  gl.getUniformLocation(prog, 'uAtmosStr'),
+  uSpinRate:  gl.getUniformLocation(prog, 'uSpinRate'),
+  uMode:      gl.getUniformLocation(prog, 'uMode'),
+  uSeed:      gl.getUniformLocation(prog, 'uSeed'),
+};
+
+gl.uniform1i(loc.uTex, 0);
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER LOOP
+// ═══════════════════════════════════════════════════════════════
+
+const startTime = performance.now();
+
+(function renderLoop() {
+  const t = (performance.now() - startTime) / 1000.0;
+  if (!dragging) rotX += 0.0006;
+
+  const planet = PLANETS[currentPlanet];
+
+  gl.uniform2f(loc.uRes, cv.width, cv.height);
+  gl.uniform1f(loc.uTime, t);
+  gl.uniform1f(loc.uRotX, rotX);
+  gl.uniform1f(loc.uRotY, rotY);
+  gl.uniform1f(loc.uZoom, zoom);
+  gl.uniform1i(loc.uShader, planet.shader);
+  gl.uniform3f(loc.uAtmosCol, planet.atmos[0], planet.atmos[1], planet.atmos[2]);
+  gl.uniform1f(loc.uAtmosStr, planet.atmosStr);
+  gl.uniform1f(loc.uSpinRate, planet.spinRate);
+  gl.uniform1i(loc.uMode, currentMode);
+  gl.uniform1f(loc.uSeed, planetSeed / 999.0);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(renderLoop);
+})();
+</script>
+</body>
+</html>
