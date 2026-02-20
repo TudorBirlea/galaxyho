@@ -353,7 +353,7 @@ void main(){
     float v2=abs(snoise(nn*7.+vec3(0.,time*0.003,5.)));
     float veins=1.-smoothstep(0.,0.10,min(v1,v2));
     float pools=smoothstep(-0.15,0.10,-pfbm(nn,2.,4));
-    float heat=clamp(veins*0.65+pools*0.50,0.,1.);
+    float heat=clamp(veins*0.75+pools*0.18,0.,1.);
     emissiveHeat=heat;
     float pulse=0.90+0.10*sin(time*0.2+pfbm(nn,2.,4)*4.);
     vec3 magma=mix(vec3(0.70,0.10,0.),vec3(1.,0.55,0.05),heat);
@@ -389,13 +389,10 @@ void main(){
 
   vec3 col;
   if(emissive){
-    // Crust (heat=0) gets normal day/night; magma (heat=1) self-illuminates
+    // Both crust and magma respond to lighting; magma has a higher base glow
     vec3 crustCol=surface*(0.015+lit*0.55);
-    vec3 magmaCol=surface*0.55;
+    vec3 magmaCol=surface*(0.12+lit*0.40);
     col=mix(crustCol,magmaCol,emissiveHeat);
-    // Night-side: magma veins glow against dark crust
-    float nightGlow=smoothstep(0.1,-0.3,NdL);
-    col+=surface*emissiveHeat*nightGlow*0.20;
   } else {
     col=surface*(0.015+lit*0.65);
     // Per-type specular
