@@ -317,6 +317,7 @@ void main(){
   // Per-type procedural overlays on texture
   float tp=u_type;
   bool emissive=false;
+  float emissiveHeat=0.;
 
   if(tp<0.5){
     // TERRAN: clouds + polar caps
@@ -353,6 +354,7 @@ void main(){
     float veins=1.-smoothstep(0.,0.10,min(v1,v2));
     float pools=smoothstep(-0.15,0.10,-pfbm(nn,2.,4));
     float heat=clamp(veins*0.65+pools*0.50,0.,1.);
+    emissiveHeat=heat;
     float pulse=0.90+0.10*sin(time*0.2+pfbm(nn,2.,4)*4.);
     vec3 magma=mix(vec3(0.70,0.10,0.),vec3(1.,0.55,0.05),heat);
     texCol=mix(texCol*0.6,magma*pulse,heat*0.8);
@@ -387,16 +389,13 @@ void main(){
 
   vec3 col;
   if(emissive){
-    // Separate magma (bright) from crust (dark) by luminance
-    float eLum=dot(surface,vec3(0.2126,0.7152,0.0722));
-    float magmaMask=smoothstep(0.15,0.45,eLum);
-    // Crust gets normal day/night lighting
-    col=surface*(0.03+lit*0.45);
-    // Magma veins self-illuminate regardless of light direction
-    col+=surface*magmaMask*0.45;
-    // Night-side: magma glows more visibly against dark crust
+    // Crust (heat=0) gets normal day/night; magma (heat=1) self-illuminates
+    vec3 crustCol=surface*(0.03+lit*0.50);
+    vec3 magmaCol=surface*0.55;
+    col=mix(crustCol,magmaCol,emissiveHeat);
+    // Night-side: magma veins glow against dark crust
     float nightGlow=smoothstep(0.1,-0.3,NdL);
-    col+=surface*magmaMask*nightGlow*0.25;
+    col+=surface*emissiveHeat*nightGlow*0.20;
   } else {
     col=surface*(0.06+lit*0.55);
     // Per-type specular
