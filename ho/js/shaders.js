@@ -390,14 +390,14 @@ void main(){
   vec3 col;
   if(emissive){
     // Crust (heat=0) gets normal day/night; magma (heat=1) self-illuminates
-    vec3 crustCol=surface*(0.03+lit*0.50);
+    vec3 crustCol=surface*(0.015+lit*0.55);
     vec3 magmaCol=surface*0.55;
     col=mix(crustCol,magmaCol,emissiveHeat);
     // Night-side: magma veins glow against dark crust
     float nightGlow=smoothstep(0.1,-0.3,NdL);
     col+=surface*emissiveHeat*nightGlow*0.20;
   } else {
-    col=surface*(0.06+lit*0.55);
+    col=surface*(0.015+lit*0.65);
     // Per-type specular
     if(tp<0.5){
       // Terran: specular on water (dark) areas
@@ -423,7 +423,7 @@ void main(){
   if(u_atmosStr>0.01){
     float NdV=max(dot(N,V),0.);
     float rim=pow(1.-NdV,4.0);
-    col+=u_atmosCol*rim*u_atmosStr*(0.25+lit*0.55);
+    col+=u_atmosCol*rim*u_atmosStr*(0.08+lit*0.55);
   }
 
   // Tonemapping
