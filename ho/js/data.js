@@ -146,7 +146,7 @@ export function generatePlanets(star) {
       hasRings, special, seed: pseed, texturePath,
       atmosCol: pt.atmosCol, atmosStr: pt.atmosStr, spinRate,
       orbitRadius: 4 * CONFIG.spectral[sc].starScale * 3 + 3 + i * 5.5 + rng() * 2.5,
-      orbitSpeed: (0.10 + rng() * 0.12) / (1 + i * 0.45),
+      orbitSpeed: (0.15 + rng() * 0.15) / Math.pow(1 + i, 1.4),
       orbitPhase: rng() * Math.PI * 2,
       visualSize: type === 'gas_giant' ? 0.8 + rng() * 0.5 : (type === 'water' ? 0.55 + rng() * 0.4 : 0.35 + rng() * 0.35),
     });

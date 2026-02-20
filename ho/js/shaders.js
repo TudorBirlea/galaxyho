@@ -388,12 +388,12 @@ void main(){
   vec3 col;
   if(emissive){
     float glow=length(surface)/1.73;
-    col=surface*(0.03+lit*0.25)+surface*glow*0.6;
+    col=surface*(0.05+lit*0.30)+surface*glow*0.7;
     // Night-side lava glow
     float nightGlow=smoothstep(0.1,-0.3,NdL);
-    col+=surface*nightGlow*0.25;
+    col+=surface*nightGlow*0.35;
   } else {
-    col=surface*(0.02+lit*0.42);
+    col=surface*(0.06+lit*0.55);
     // Per-type specular
     if(tp<0.5){
       // Terran: specular on water (dark) areas
@@ -419,11 +419,11 @@ void main(){
   if(u_atmosStr>0.01){
     float NdV=max(dot(N,V),0.);
     float rim=pow(1.-NdV,4.0);
-    col+=u_atmosCol*rim*u_atmosStr*(0.15+lit*0.50);
+    col+=u_atmosCol*rim*u_atmosStr*(0.25+lit*0.55);
   }
 
   // Tonemapping
-  col=ACESFilm(col*0.9);
+  col=ACESFilm(col*1.2);
   col=pow(col,vec3(0.96));
   gl_FragColor=vec4(col,1.);
 }`;
@@ -445,7 +445,7 @@ void main(){float rP=clamp((vR-u_innerR)/(u_outerR-u_innerR),0.,1.);
   float gc=.45+hsh(u_seed*7.)*.1,gw=.08+hsh(u_seed*11.)*.04;
   float gap=smoothstep(gc-gw,gc,rP)*smoothstep(gc+gw,gc,rP);density*=1.-gap*(.7+hsh(u_seed*13.)*.3);
   float gap2=smoothstep(.22,.25,rP)*smoothstep(.28,.25,rP);density*=1.-gap2*.4;
-  vec3 L=normalize(-vWorldPos);float lit=.2+.8*abs(dot(vWorldNormal,L));
+  vec3 L=normalize(-vWorldPos);float lit=.3+.7*abs(dot(vWorldNormal,L));
   float rH=hsh(u_seed*1.23);vec3 dc=rH<.33?vec3(.75,.65,.52):rH<.66?vec3(.65,.58,.50):vec3(.72,.58,.43);
   dc*=.85+.3*hsh2(vec2(rP*15.+angle*3.,u_seed));
   vec3 col=dc*density*lit;float alpha=clamp(density*.6,0.,.75);
