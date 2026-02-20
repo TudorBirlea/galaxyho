@@ -387,11 +387,16 @@ void main(){
 
   vec3 col;
   if(emissive){
-    float glow=length(surface)/1.73;
-    col=surface*(0.05+lit*0.30)+surface*glow*0.7;
-    // Night-side lava glow
+    // Separate magma (bright) from crust (dark) by luminance
+    float eLum=dot(surface,vec3(0.2126,0.7152,0.0722));
+    float magmaMask=smoothstep(0.15,0.45,eLum);
+    // Crust gets normal day/night lighting
+    col=surface*(0.03+lit*0.45);
+    // Magma veins self-illuminate regardless of light direction
+    col+=surface*magmaMask*0.45;
+    // Night-side: magma glows more visibly against dark crust
     float nightGlow=smoothstep(0.1,-0.3,NdL);
-    col+=surface*nightGlow*0.35;
+    col+=surface*magmaMask*nightGlow*0.25;
   } else {
     col=surface*(0.06+lit*0.55);
     // Per-type specular
