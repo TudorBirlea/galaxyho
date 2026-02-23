@@ -1,4 +1,4 @@
-export const VERSION = '3.6';
+export const VERSION = '3.7';
 
 export const CONFIG = {
   galaxy: {

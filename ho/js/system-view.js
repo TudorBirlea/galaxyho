@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js?v=3.6';
+import { CONFIG } from './config.js?v=3.7';
 import { STAR_VERT, STAR_FRAG, PLANET_VERT, PLANET_FRAG, RING_VERT, RING_FRAG,
-         ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG } from './shaders.js?v=3.6';
-import { mulberry32 } from './utils.js?v=3.6';
-import { generatePlanets, generateAsteroidBelt } from './data.js?v=3.6';
-import { systemGroup, camera, renderer } from './engine.js?v=3.6';
-import { app } from './app.js?v=3.6';
+         ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG } from './shaders.js?v=3.7';
+import { mulberry32 } from './utils.js?v=3.7';
+import { generatePlanets, generateAsteroidBelt } from './data.js?v=3.7';
+import { systemGroup, camera, renderer } from './engine.js?v=3.7';
+import { app } from './app.js?v=3.7';
 
 // Texture cache — shared across system visits
 const textureCache = {};

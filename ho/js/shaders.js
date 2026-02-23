@@ -871,52 +871,69 @@ ${NOISE_GLSL}
 vec3 ACESFilm(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.,1.);}
 
 // Disk coordinate system (tilted plane)
-mat3 diskRotation;
-void initDiskRotation(float tilt){
+mat3 diskBasis;
+vec3 diskNormal;
+void initDiskBasis(float tilt){
   float c=cos(tilt),s=sin(tilt);
-  diskRotation=mat3(1.,0.,0., 0.,c,-s, 0.,s,c);
+  diskBasis=mat3(1.,0.,0., 0.,c,-s, 0.,s,c);
+  diskNormal=vec3(0.,c,s);
 }
 
-// Sample the accretion disk at a point in disk-local coordinates
-vec4 sampleDisk(vec3 p, vec3 rd){
-  vec3 dp=diskRotation*p;
-  float r=length(dp.xz);
-  float diskInner=1.4;
-  float diskOuter=5.0;
+// Disk color + density at a given disk-space radius and angle
+vec4 evalDisk(float r, float angle, vec3 rd){
+  float diskInner=1.3;
+  float diskOuter=6.0;
   if(r<diskInner||r>diskOuter) return vec4(0.);
 
-  // Vertical Gaussian falloff (volumetric slab)
-  float thickness=0.08+0.04*(r-diskInner)/(diskOuter-diskInner);
-  float vertFalloff=exp(-dp.y*dp.y/(2.*thickness*thickness));
-  if(vertFalloff<0.01) return vec4(0.);
+  float rNorm=(r-diskInner)/(diskOuter-diskInner);
 
   // Radial brightness: T ~ r^(-3/4), brightest near ISCO
-  float rNorm=(r-diskInner)/(diskOuter-diskInner);
-  float radialBright=pow(max(1.-rNorm,0.01),0.75)*1.8;
+  float radialBright=pow(max(1.-rNorm,0.01),0.75)*2.2;
+  radialBright*=smoothstep(diskOuter,diskOuter-1.5,r);
 
-  // Spiral structure
-  float angle=atan(dp.z,dp.x);
-  float spiral=0.7+0.3*snoise(vec3(angle*1.5+u_time*0.15,r*2.5,u_time*0.05));
-  float spiral2=0.8+0.2*snoise(vec3(angle*3.+u_time*0.1,r*4.,0.5));
-  float density=radialBright*spiral*spiral2*vertFalloff;
+  // Spiral structure + turbulence
+  float spiral=0.65+0.35*snoise(vec3(angle*2.0-r*0.8+u_time*0.12,r*2.0,u_time*0.04));
+  float fine=0.8+0.2*snoise(vec3(angle*5.+u_time*0.08,r*6.,0.3));
+  float density=radialBright*spiral*fine;
 
   // Temperature color: inner=white-yellow, middle=orange, outer=deep red
-  vec3 innerCol=vec3(1.,0.95,0.8);
-  vec3 midCol=vec3(1.,0.55,0.15);
-  vec3 outerCol=vec3(0.4,0.08,0.02);
+  vec3 innerCol=vec3(1.,0.95,0.85);
+  vec3 midCol=vec3(1.,0.5,0.1);
+  vec3 outerCol=vec3(0.35,0.06,0.01);
   vec3 col;
-  if(rNorm<0.3) col=mix(innerCol,midCol,rNorm/0.3);
-  else col=mix(midCol,outerCol,(rNorm-0.3)/0.7);
+  if(rNorm<0.25) col=mix(innerCol,midCol,rNorm/0.25);
+  else col=mix(midCol,outerCol,(rNorm-0.25)/0.75);
 
-  // Doppler beaming: orbital velocity is tangential
-  vec3 tangent=diskRotation*normalize(vec3(-dp.z,0.,dp.x));
-  float orbitalSpeed=0.4/sqrt(max(r,1.5));
-  float dopplerShift=dot(tangent*orbitalSpeed,normalize(rd));
-  float boost=1.+dopplerShift*2.5;
-  density*=boost*boost;
-  col=mix(col,vec3(0.7,0.8,1.),max(dopplerShift*0.3,0.));
+  // Doppler beaming: relativistic D^3 factor
+  vec3 tangentLocal=vec3(-sin(angle),0.,cos(angle));
+  vec3 tangentWorld=transpose(diskBasis)*tangentLocal;
+  float orbitalSpeed=0.5/sqrt(max(r,1.4));
+  float dopplerShift=dot(tangentWorld*orbitalSpeed,normalize(rd));
+  float D=1.0/(1.0-dopplerShift*1.8);
+  D=clamp(D,0.15,4.0);
+  density*=D*D*D;
+  float shift=clamp(dopplerShift*2.0,-1.,1.);
+  if(shift>0.) col=mix(col,vec3(0.6,0.75,1.0),shift*0.5);
+  else col=mix(col,vec3(1.0,0.2,0.05),-shift*0.25);
 
   return vec4(col*density,density);
+}
+
+// Explicit ray-disk plane intersection for lensed secondary image
+vec3 sampleDiskExplicit(vec3 ro, vec3 rd, float weight, inout float accumAlpha){
+  float denom=dot(rd,diskNormal);
+  if(abs(denom)<0.0001) return vec3(0.);
+  float t=-dot(ro,diskNormal)/denom;
+  if(t<0.) return vec3(0.);
+  vec3 hitW=ro+rd*t;
+  vec3 hitD=diskBasis*hitW;
+  float r=length(hitD.xz);
+  float angle=atan(hitD.z,hitD.x);
+  vec4 d=evalDisk(r,angle,rd);
+  if(d.a<0.001) return vec3(0.);
+  float alpha=min(d.a*weight,1.0-accumAlpha);
+  accumAlpha+=alpha;
+  return d.rgb*alpha;
 }
 
 // Background starfield with given ray direction
@@ -955,7 +972,7 @@ void main(){
   vec3 rd=normalize(farClip.xyz-cameraPosition);
   vec3 ro=cameraPosition/u_starRadius;
 
-  initDiskRotation(u_diskTilt);
+  initDiskBasis(u_diskTilt);
 
   // ── Geodesic ray march ──
   vec3 pos=ro;
@@ -965,32 +982,51 @@ void main(){
   float diskAccum=0.;
   bool hitHorizon=false;
   float closestR=100.;
+  float prevDiskY=dot(pos,diskNormal);
 
-  for(int i=0;i<60;i++){
+  for(int i=0;i<80;i++){
     float r=length(pos);
     closestR=min(closestR,r);
 
     if(r<1.02){ hitHorizon=true; break; }
     if(r>30.&&i>5) break;
 
-    // Gravitational acceleration: a = -GM/r^2 * rhat
+    // Gravitational deflection
     vec3 rhat=pos/r;
     float accel=1.5/(r*r);
     vel-=rhat*accel*dt;
     vel=normalize(vel);
 
     // Adaptive step size
-    dt=max(0.05,min(0.5,(r-1.0)*0.3));
-    pos+=vel*dt;
+    dt=max(0.04,min(0.4,(r-1.0)*0.25));
+    vec3 newPos=pos+vel*dt;
 
-    // Sample accretion disk along the curved ray
-    vec4 diskSample=sampleDisk(pos,vel);
-    if(diskSample.a>0.001){
-      float alpha=diskSample.a*dt*0.8;
-      col+=diskSample.rgb*alpha*(1.-diskAccum);
-      diskAccum+=alpha*(1.-diskAccum);
-      if(diskAccum>0.95) break;
+    // Disk-plane crossing detection — exact intersection sampling
+    float curDiskY=dot(newPos,diskNormal);
+    if(prevDiskY*curDiskY<0.0 && diskAccum<0.95){
+      float frac=prevDiskY/(prevDiskY-curDiskY);
+      vec3 crossPt=mix(pos,newPos,frac);
+      float crossR=length(crossPt);
+      if(crossR>1.2){
+        vec3 crossD=diskBasis*crossPt;
+        float cr=length(crossD.xz);
+        float cangle=atan(crossD.z,crossD.x);
+        vec4 d=evalDisk(cr,cangle,vel);
+        if(d.a>0.001){
+          float alpha=min(d.a*0.9,1.0-diskAccum);
+          col+=d.rgb*alpha;
+          diskAccum+=alpha;
+        }
+      }
     }
+    prevDiskY=curDiskY;
+
+    pos=newPos;
+  }
+
+  // Secondary lensed image — far side of disk bent over/under the hole
+  if(!hitHorizon && diskAccum<0.9){
+    col+=sampleDiskExplicit(pos,vel,0.7,diskAccum);
   }
 
   // Background stars (using final warped ray direction)
@@ -1000,9 +1036,9 @@ void main(){
 
   // Photon ring at photon sphere (~1.5 rs) + horizon edge ring
   float photonDist=abs(closestR-1.5);
-  float photonRing=exp(-photonDist*20.)*1.2;
-  float horizonRing=exp(-abs(closestR-1.05)*40.)*0.6;
-  vec3 ringCol=vec3(1.,0.7,0.3);
+  float photonRing=exp(-photonDist*25.)*1.5;
+  float horizonRing=exp(-abs(closestR-1.05)*50.)*0.8;
+  vec3 ringCol=vec3(1.,0.75,0.35);
   col+=ringCol*(photonRing+horizonRing)*(1.-float(hitHorizon)*0.5);
 
   // Subtle outer glow
@@ -1010,7 +1046,7 @@ void main(){
   float outerGlow=exp(-edgeDist*2.)*0.03;
   col+=vec3(0.5,0.25,0.1)*outerGlow;
 
-  col=ACESFilm(col*0.85);
+  col=ACESFilm(col*0.9);
   float vig=1.-0.12*dot(vUV*0.5,vUV*0.5);
   col*=vig;
   col=pow(col,vec3(0.92));
