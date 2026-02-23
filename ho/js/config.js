@@ -59,10 +59,11 @@ export const CONFIG = {
   filmGrain: { intensity: 0.025 },
   vignette: { strength: 1.2 },
   bgStarLayers: [
-    { count: 800,  radius: 200, drift: 0.40, size: 1.0, opacity: 0.55, color: 0xaabbee },
-    { count: 1500, radius: 350, drift: 0.20, size: 0.7, opacity: 0.35, color: 0x8899bb },
-    { count: 2500, radius: 550, drift: 0.07, size: 0.4, opacity: 0.25, color: 0x667788 },
+    { count: 600,  radius: 200, drift: 0.40, size: 3.0, color: 0xaabbee },
+    { count: 1000, radius: 350, drift: 0.20, size: 2.2, color: 0x8899bb },
+    { count: 1500, radius: 550, drift: 0.07, size: 1.5, color: 0x667788 },
   ],
-  nebulaLayers: 5,
-  nebulaLayerSpread: 20,
+  nebulaCount: 6,
+  nebulaLayers: 3,
+  nebulaLayerSpread: 12,
 };

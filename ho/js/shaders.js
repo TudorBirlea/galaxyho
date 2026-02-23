@@ -640,7 +640,10 @@ varying vec2 vUv;
 uniform float u_time;
 uniform vec3 u_color;
 uniform float u_seed;
+uniform float u_opacity;
 ${NOISE_GLSL}
+
+float fbm3(vec3 p){float f=0.,a=.5;for(int i=0;i<3;i++){f+=a*snoise(p);p*=2.1;a*=.48;}return f;}
 
 void main(){
   vec2 p=(vUv-0.5)*2.0;
@@ -649,11 +652,11 @@ void main(){
   float falloff=1.0-smoothstep(0.3,1.0,r);
 
   vec3 noiseCoord=vec3(p*1.5+u_seed*10.0,u_time*0.01+u_seed);
-  float n=fbm4(noiseCoord)*0.5+0.5;
-  float n2=fbm4(noiseCoord*2.0+vec3(50.0))*0.5+0.5;
+  float n=fbm3(noiseCoord)*0.5+0.5;
+  float n2=fbm3(noiseCoord*2.0+vec3(50.0))*0.5+0.5;
 
   float density=n*n2*falloff*falloff;
-  density=smoothstep(0.05,0.5,density)*0.07;
+  density=smoothstep(0.05,0.45,density)*u_opacity;
 
   vec3 col=u_color*density;
   if(density<0.001)discard;

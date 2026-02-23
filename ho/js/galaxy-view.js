@@ -39,8 +39,8 @@ export function buildGalaxyView(galaxy, state) {
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
     const mat = new THREE.ShaderMaterial({
-      vertexShader: `attribute float size;varying vec3 vC;void main(){vC=color;vec4 mv=modelViewMatrix*vec4(position,1);gl_PointSize=size*(200./-mv.z);gl_Position=projectionMatrix*mv;}`,
-      fragmentShader: `varying vec3 vC;void main(){float d=length(gl_PointCoord-.5)*2.;gl_FragColor=vec4(vC,(1.-smoothstep(0.,1.,d))*.7);}`,
+      vertexShader: `attribute float size;varying vec3 vC;void main(){vC=color;vec4 mv=modelViewMatrix*vec4(position,1);gl_PointSize=size*(600./-mv.z);gl_Position=projectionMatrix*mv;}`,
+      fragmentShader: `varying vec3 vC;void main(){float d=length(gl_PointCoord-.5)*2.;gl_FragColor=vec4(vC,(1.-smoothstep(0.,1.,d))*.9);}`,
       transparent: true, vertexColors: true, depthWrite: false, blending: THREE.AdditiveBlending
     });
     const points = new THREE.Points(geo, mat);
@@ -50,13 +50,13 @@ export function buildGalaxyView(galaxy, state) {
 
   // ── v2: Multi-layer volumetric nebulae ──
   const nebulaColors = [
-    new THREE.Color(0.15, 0.08, 0.25),
-    new THREE.Color(0.08, 0.12, 0.22),
-    new THREE.Color(0.20, 0.10, 0.05),
-    new THREE.Color(0.05, 0.15, 0.18),
+    new THREE.Color(0.35, 0.18, 0.55),
+    new THREE.Color(0.18, 0.25, 0.50),
+    new THREE.Color(0.45, 0.22, 0.10),
+    new THREE.Color(0.12, 0.35, 0.40),
   ];
   const nebulaRng = mulberry32(galaxy.seed + 777);
-  const nebulaCount = 10;
+  const nebulaCount = CONFIG.nebulaCount;
   const layerCount = CONFIG.nebulaLayers;
   const layerSpread = CONFIG.nebulaLayerSpread;
 
@@ -70,10 +70,9 @@ export function buildGalaxyView(galaxy, state) {
     const cz = (nebulaRng() - 0.5) * R * 1.6;
 
     for (let j = 0; j < layerCount; j++) {
-      const layerSize = baseSize * (0.7 + j * 0.12);
+      const layerSize = baseSize * (0.8 + j * 0.15);
       const layerSeed = baseSeed + j * 1.3;
-      // Core layers brighter, outer layers dimmer
-      const layerOpacity = 0.07 * (1.0 - j * 0.12);
+      const layerOpacity = 0.45 * (1.0 - j * 0.2);
       const layerColor = nebulaColors[colorIdx].clone();
       layerColor.r = Math.min(1, layerColor.r + j * 0.015);
       layerColor.b = Math.min(1, layerColor.b + j * 0.01);
@@ -86,6 +85,7 @@ export function buildGalaxyView(galaxy, state) {
           u_time: { value: 0 },
           u_color: { value: layerColor },
           u_seed: { value: layerSeed },
+          u_opacity: { value: layerOpacity },
         },
         transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
       });
