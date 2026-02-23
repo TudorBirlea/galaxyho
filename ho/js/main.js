@@ -1,17 +1,17 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js?v=3.1';
-import { generateGalaxy, generatePlanets, starDistance } from './data.js?v=3.1';
+import { CONFIG } from './config.js?v=3.2';
+import { generateGalaxy, generatePlanets, starDistance } from './data.js?v=3.2';
 import { camera, controls, composer, clock, galaxyGroup, systemGroup, bloomPass,
-         bloomTintPass, grainPass } from './engine.js?v=3.1';
-import { createState, saveState, loadState } from './state.js?v=3.1';
-import { app } from './app.js?v=3.1';
-import { easeInOutCubic } from './utils.js?v=3.1';
+         bloomTintPass, grainPass } from './engine.js?v=3.2';
+import { createState, saveState, loadState } from './state.js?v=3.2';
+import { app } from './app.js?v=3.2';
+import { easeInOutCubic } from './utils.js?v=3.2';
 import { hideTooltip, hideInfoCard, updateHUD, hudLocation, backBtn, overlay,
-         renderJournal, showJournalNotice } from './ui.js?v=3.1';
-import { buildGalaxyView } from './galaxy-view.js?v=3.1';
-import { buildSystemView, clearSystemView, updateSystemView } from './system-view.js?v=3.1';
-import { setupInput } from './input.js?v=3.1';
-import { drawMinimap } from './minimap.js?v=3.1';
+         renderJournal, showJournalNotice } from './ui.js?v=3.2';
+import { buildGalaxyView } from './galaxy-view.js?v=3.2';
+import { buildSystemView, clearSystemView, updateSystemView } from './system-view.js?v=3.2';
+import { setupInput } from './input.js?v=3.2';
+import { drawMinimap } from './minimap.js?v=3.2';
 
 // ── Transition state ──
 let transAnim = null;

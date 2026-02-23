@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js?v=3.1';
+import { CONFIG } from './config.js?v=3.2';
 import { STAR_VERT, STAR_FRAG, PLANET_VERT, PLANET_FRAG, RING_VERT, RING_FRAG,
-         ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG } from './shaders.js?v=3.1';
-import { mulberry32 } from './utils.js?v=3.1';
-import { generatePlanets, generateAsteroidBelt } from './data.js?v=3.1';
-import { systemGroup, camera, renderer } from './engine.js?v=3.1';
-import { app } from './app.js?v=3.1';
+         ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG } from './shaders.js?v=3.2';
+import { mulberry32 } from './utils.js?v=3.2';
+import { generatePlanets, generateAsteroidBelt } from './data.js?v=3.2';
+import { systemGroup, camera, renderer } from './engine.js?v=3.2';
+import { app } from './app.js?v=3.2';
 
 // Texture cache — shared across system visits
 const textureCache = {};
@@ -269,7 +269,7 @@ export function buildSystemView(star) {
         void main(){
           vC = color;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize = size * (300.0 / -mv.z);
+          gl_PointSize = clamp(size * (150.0 / -mv.z), 1.0, 4.0);
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `
@@ -277,9 +277,8 @@ export function buildSystemView(star) {
         void main(){
           float d = length(gl_PointCoord - 0.5) * 2.0;
           if(d > 1.0) discard;
-          // Rough rocky look: slightly irregular edge
-          float alpha = (1.0 - smoothstep(0.6, 1.0, d)) * 0.9;
-          gl_FragColor = vec4(vC, alpha);
+          float alpha = (1.0 - d * d) * 0.7;
+          gl_FragColor = vec4(vC * 0.8, alpha);
         }`,
       transparent: true, vertexColors: true, depthWrite: false,
     });

@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js?v=3.1';
+import { CONFIG } from './config.js?v=3.2';
 
 const canvas = document.getElementById('minimap');
 const ctx = canvas.getContext('2d');
