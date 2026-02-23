@@ -562,14 +562,14 @@ void main(){
   vec2 uv=gl_PointCoord-0.5;
   float d=length(uv);
 
-  float core=exp(-d*d*120.0);
+  float core=exp(-d*d*60.0);
 
-  float sH=exp(-abs(uv.y)*35.0)*exp(-abs(uv.x)*5.5);
-  float sV=exp(-abs(uv.x)*35.0)*exp(-abs(uv.y)*5.5);
-  float spikes=(sH+sV)*0.25;
+  float sH=exp(-abs(uv.y)*30.0)*exp(-abs(uv.x)*4.5);
+  float sV=exp(-abs(uv.x)*30.0)*exp(-abs(uv.y)*4.5);
+  float spikes=(sH+sV)*0.30;
 
-  float halo=exp(-d*4.0)*0.40;
-  float halo2=exp(-d*10.0)*0.55;
+  float halo=exp(-d*3.0)*0.55;
+  float halo2=exp(-d*8.0)*0.65;
 
   float total=core+spikes+halo+halo2;
 
