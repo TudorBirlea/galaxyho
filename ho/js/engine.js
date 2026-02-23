@@ -4,8 +4,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { CONFIG } from './config.js';
-import { FILM_GRAIN_SHADER, BLOOM_TINT_SHADER } from './shaders.js';
+import { CONFIG } from './config.js?v=3.1';
+import { FILM_GRAIN_SHADER, BLOOM_TINT_SHADER } from './shaders.js?v=3.1';
 
 export const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
