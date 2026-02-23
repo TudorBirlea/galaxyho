@@ -133,9 +133,9 @@ void main(){
     float brightSpot=max(0.,brightNoise*1.8-1.);
 
     float total=clamp(granuleNoise-sunspots+brightSpot,0.,1.5);
-    total=pow(total,1.25);
+    total=pow(total,1.15);
     float highTemp=u_highTemp;
-    float lowTemp=highTemp*0.12;
+    float lowTemp=highTemp*0.35;
     float pixelTemp=mix(lowTemp,highTemp,total);
     vec3 starCol=tempToColor(pixelTemp);
 
@@ -146,13 +146,10 @@ void main(){
     starCol=mix(limbCol,starCol,pow(NdotV,0.35));
     starCol*=limb;
 
-    float brightnessBoost=1.2+clamp((highTemp-4000.)/15000.,0.,1.)*0.6;
+    float brightnessBoost=0.8+clamp((highTemp-4000.)/20000.,0.,1.)*0.3;
     starCol*=brightnessBoost;
 
     starCol=colorGrade(starCol,u_starColor,u_euvMix);
-
-    float postLum=dot(starCol,vec3(0.2126,0.7152,0.0722));
-    starCol=mix(vec3(postLum),starCol,1.4);
     starCol=max(starCol,vec3(0.));
 
     col=starCol;
@@ -171,8 +168,14 @@ void main(){
   float streamer=max(0.,streamerNoise*1.5-0.3)*exp(-edgeDist*3.)*0.12;
   totalGlow+=streamer;
 
-  // Background starfield
+  // Background starfield + corona + prominences (background only)
   if(hit<0.){
+    // Corona overlay
+    float whiteness=exp(-edgeDist*3.);
+    vec3 gc=mix(glowColor,vec3(1.),whiteness*0.5);
+    col+=gc*totalGlow;
+
+    // Background starfield
     vec3 d=normalize(rd);
     float theta=acos(clamp(d.y,-1.,1.));
     float phi=atan(d.z,d.x);
@@ -199,16 +202,13 @@ void main(){
         col+=sCol*point*dimmer*0.5*glowMask;
       }
     }
+  } else {
+    // Subtle limb glow on the surface edge (not the full corona)
+    float limbGlow=exp(-edgeDist*12.)*0.08;
+    col+=glowColor*limbGlow;
   }
 
-  // Corona overlay
-  {
-    float whiteness=exp(-edgeDist*3.);
-    vec3 gc=mix(glowColor,vec3(1.),whiteness*0.5);
-    col+=gc*totalGlow;
-  }
-
-  // Prominences
+  // Prominences (background only)
   if(hit<0.&&edgeDist<0.6){
     vec3 surfPoint=normalize(ro+rd*max(-bc,0.));
     float cr=cos(slowTime*0.15),sr=sin(slowTime*0.15);
@@ -229,10 +229,10 @@ void main(){
     }
   }
 
-  col=ACESFilm(col*1.5);
-  float vig=1.-0.3*dot(vUV*0.5,vUV*0.5);
+  col=ACESFilm(col*0.9);
+  float vig=1.-0.15*dot(vUV*0.5,vUV*0.5);
   col*=vig;
-  col=pow(col,vec3(0.95));
+  col=pow(col,vec3(0.92));
 
   gl_FragColor=vec4(col,1.);
 }`;
