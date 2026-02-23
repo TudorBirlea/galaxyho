@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { generateGalaxy, generatePlanets, starDistance } from './data.js';
-import { camera, controls, composer, clock, galaxyGroup, systemGroup, bloomPass } from './engine.js';
+import { camera, controls, composer, clock, galaxyGroup, systemGroup, bloomPass,
+         bloomTintPass, grainPass } from './engine.js';
 import { createState, saveState, loadState } from './state.js';
 import { app } from './app.js';
 import { easeInOutCubic } from './utils.js';
@@ -20,19 +21,16 @@ function init() {
   app.state = saved || createState(CONFIG.galaxy.seed);
   app.galaxy = generateGalaxy(app.state.galaxySeed);
 
-  // Restore visited state into galaxy data
   for (const star of app.galaxy.stars) {
     if (app.state.visitedStars.has(star.id)) star.visited = true;
   }
 
-  // Ensure home star's neighbors are always reachable
   const star0 = app.galaxy.stars[0];
   app.state.reachableStars.add(0);
   for (const adjId of star0.adjacentIds) {
     app.state.reachableStars.add(adjId);
   }
 
-  // On fresh game, set ship starting planet + journal entry
   if (!saved) {
     app.state.visitedStars.add(0);
     star0.visited = true;
@@ -184,9 +182,11 @@ function exitSystem() {
     saveState(app.state);
     drawMinimap(app.galaxy, app.state, app.selectedStar);
 
-    // Restore full bloom for galaxy view
+    // Restore bloom for galaxy view
     bloomPass.threshold = CONFIG.bloom.threshold;
     bloomPass.strength = CONFIG.bloom.strength;
+    // v2: enable bloom tint in galaxy view
+    bloomTintPass.uniforms.u_enabled.value = 1.0;
 
     overlay.style.opacity = '0';
 
@@ -219,7 +219,6 @@ function animate() {
     camera.position.lerpVectors(transAnim.fromPos, transAnim.toPos, eased);
     controls.target.lerpVectors(transAnim.fromTarget, transAnim.toTarget, eased);
 
-    // Enter-system: fade and swap at midpoint
     if (!transAnim.swapped && progress >= transAnim.fadePoint) {
       transAnim.swapped = true;
       overlay.style.transition = 'opacity 0.25s';
@@ -248,6 +247,8 @@ function animate() {
 
         // Disable bloom in system view (star shader handles its own glow)
         bloomPass.strength = 0;
+        // v2: disable bloom tint in system view (nothing to tint)
+        bloomTintPass.uniforms.u_enabled.value = 0.0;
 
         transAnim = null;
         app.transitioning = false;
@@ -265,15 +266,29 @@ function animate() {
 
   controls.update();
 
+  // v2: Update film grain time
+  grainPass.uniforms.u_time.value = t;
+
   if (app.state.currentView === 'system') {
     updateSystemView(t);
   } else if (app.galaxyStarsMat) {
     app.galaxyStarsMat.uniforms.u_time.value = t;
     if (app.shipMarkerMat) app.shipMarkerMat.uniforms.u_time.value = t;
-    // Update nebula time uniforms
-    for (const child of galaxyGroup.children) {
-      if (child.isMesh && child.material.uniforms && child.material.uniforms.u_time && child.material.uniforms.u_color) {
-        child.material.uniforms.u_time.value = t;
+
+    // Update nebula time + billboarding
+    for (const mesh of app.nebulaMeshes) {
+      mesh.material.uniforms.u_time.value = t;
+      // v2: billboard nebulae toward camera
+      mesh.lookAt(camera.position);
+    }
+
+    // v2: Update background star parallax
+    if (app.camOrigin && app.bgStarLayers.length > 0) {
+      const dx = camera.position.x - app.camOrigin.x;
+      const dy = camera.position.y - app.camOrigin.y;
+      const dz = camera.position.z - app.camOrigin.z;
+      for (const layer of app.bgStarLayers) {
+        layer.points.position.set(dx * layer.drift, dy * layer.drift, dz * layer.drift);
       }
     }
   }

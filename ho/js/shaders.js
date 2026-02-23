@@ -32,7 +32,8 @@ float hsh(float n){return fract(sin(n)*43758.5453);}
 
 export { NOISE_GLSL };
 
-// ── Star: fullscreen quad + ray-marched shader (matches experiment-stars.html) ──
+// ── Star: fullscreen quad + ray-marched shader ──
+// v2: added u_rotSpeed uniform for configurable surface rotation
 
 export const STAR_VERT = `varying vec2 vUV;
 void main(){
@@ -49,6 +50,7 @@ uniform float u_spotAmount;
 uniform float u_granuleScale;
 uniform vec3 u_starColor;
 uniform float u_euvMix;
+uniform float u_rotSpeed;
 uniform mat4 u_invViewProj;
 ${NOISE_GLSL}
 
@@ -95,19 +97,15 @@ float raySphere(vec3 ro,vec3 rd,float radius){
 }
 
 void main(){
-  // Reconstruct camera ray from Three.js camera
   vec4 farClip=u_invViewProj*vec4(vUV,1.,1.);
   farClip/=farClip.w;
   vec3 rd=normalize(farClip.xyz-cameraPosition);
-
-  // Work in normalized space (star radius = 1, matching experiment)
   vec3 ro=cameraPosition/u_starRadius;
   float slowTime=u_time*0.04;
 
   vec3 col=vec3(0.);
   float hit=raySphere(ro,rd,1.);
 
-  // Closest approach to star center (for corona)
   float bc=dot(ro,rd);
   float closestDist=length(ro+rd*max(-bc,0.));
   float edgeDist=max(0.,closestDist-1.);
@@ -117,21 +115,20 @@ void main(){
     vec3 hitPos=ro+rd*hit;
     vec3 normal=normalize(hitPos);
 
-    float c2=cos(slowTime*0.3),s2=sin(slowTime*0.3);
+    // v2: configurable rotation speed via u_rotSpeed
+    float rotAngle=u_time*u_rotSpeed;
+    float c2=cos(rotAngle),s2=sin(rotAngle);
     vec3 surfCoord=vec3(c2*normal.x+s2*normal.z,normal.y,-s2*normal.x+c2*normal.z);
     float gScale=5.*u_granuleScale;
 
-    // Voronoi cellular convection + FBM detail
     float cell=voronoi3D(surfCoord*gScale*0.6);
     float cellPattern=1.-smoothstep(0.,0.22,cell);
     float detail=(starFbm(surfCoord,gScale,3)+1.)*0.5;
     float granuleNoise=cellPattern*0.7+detail*0.3;
 
-    // Sunspots
     float spotNoise=snoise(surfCoord*gScale*0.15+vec3(slowTime*0.1,0.,slowTime*0.05));
     float sunspots=max(0.,spotNoise*3.2-2.1)*u_spotAmount;
 
-    // Bright regions
     float brightNoise=snoise(surfCoord*gScale*0.08+vec3(0.,slowTime*0.15,0.));
     float brightSpot=max(0.,brightNoise*1.8-1.);
 
@@ -142,7 +139,6 @@ void main(){
     float pixelTemp=mix(lowTemp,highTemp,total);
     vec3 starCol=tempToColor(pixelTemp);
 
-    // Limb darkening
     float NdotV=max(dot(normal,normalize(ro-hitPos)),0.);
     float limb=pow(NdotV,0.5);
     float limbTemp=mix(lowTemp*1.2,pixelTemp,pow(NdotV,0.55));
@@ -150,14 +146,11 @@ void main(){
     starCol=mix(limbCol,starCol,pow(NdotV,0.35));
     starCol*=limb;
 
-    // Brightness boost
     float brightnessBoost=1.2+clamp((highTemp-4000.)/15000.,0.,1.)*0.6;
     starCol*=brightnessBoost;
 
-    // EUV color grading
     starCol=colorGrade(starCol,u_starColor,u_euvMix);
 
-    // Re-saturate
     float postLum=dot(starCol,vec3(0.2126,0.7152,0.0722));
     starCol=mix(vec3(postLum),starCol,1.4);
     starCol=max(starCol,vec3(0.));
@@ -173,13 +166,12 @@ void main(){
   float coronaBoost=1.+clamp((u_highTemp-4000.)/20000.,0.,0.4);
   float totalGlow=(glow1+glow2+glow3)*coronaBoost;
 
-  // Coronal streamers
   vec3 closestOnSphere=normalize(ro+rd*max(-bc,0.));
   float streamerNoise=snoise(closestOnSphere*3.+vec3(0.,slowTime*0.05,0.));
   float streamer=max(0.,streamerNoise*1.5-0.3)*exp(-edgeDist*3.)*0.12;
   totalGlow+=streamer;
 
-  // Background starfield (miss pixels only)
+  // Background starfield
   if(hit<0.){
     vec3 d=normalize(rd);
     float theta=acos(clamp(d.y,-1.,1.));
@@ -209,14 +201,14 @@ void main(){
     }
   }
 
-  // Corona overlay (all pixels including surface, before tonemapping)
+  // Corona overlay
   {
     float whiteness=exp(-edgeDist*3.);
     vec3 gc=mix(glowColor,vec3(1.),whiteness*0.5);
     col+=gc*totalGlow;
   }
 
-  // Prominences (miss pixels near limb)
+  // Prominences
   if(hit<0.&&edgeDist<0.6){
     vec3 surfPoint=normalize(ro+rd*max(-bc,0.));
     float cr=cos(slowTime*0.15),sr=sin(slowTime*0.15);
@@ -237,7 +229,6 @@ void main(){
     }
   }
 
-  // Tonemapping + vignette
   col=ACESFilm(col*1.5);
   float vig=1.-0.3*dot(vUV*0.5,vUV*0.5);
   col*=vig;
@@ -291,49 +282,39 @@ void main(){
   vec3 V=normalize(vViewDir);
   vec3 L=normalize(u_lightDir);
 
-  // Spin rotation (per-planet speed)
   float spinSpeed=u_spinRate*0.3;
   float rc=cos(time*spinSpeed),rs=sin(time*spinSpeed);
   vec3 spun=vec3(rc*pos.x+rs*pos.z,pos.y,-rs*pos.x+rc*pos.z);
 
-  // Texture UVs from spun surface
   vec2 texUV=sphereUV(spun);
 
-  // Noise coordinates (seed offset for variety)
   vec3 nn=spun+vec3(u_seed*7.3,u_seed*3.7,u_seed*9.1);
 
-  // UV warping based on seed
   vec2 wUV=texUV;
   wUV.x+=pfbm(nn*2.,2.,4)*0.04;
   wUV.y+=pfbm(nn*2.+vec3(5.),2.,4)*0.025;
 
-  // Sample texture with warped UVs
   vec3 texCol=texture2D(u_tex,wUV).rgb;
 
-  // Subtle color grade shift per seed
   float warmShift=(u_seed-0.5)*0.15;
   texCol=mix(texCol,texCol*vec3(1.+warmShift,1.,1.-warmShift),0.4);
 
-  // Per-type procedural overlays on texture
   float tp=u_type;
   bool emissive=false;
   float emissiveHeat=0.;
 
   if(tp<0.5){
-    // TERRAN: clouds + polar caps
     float clouds=pfbm(nn+vec3(time*0.008,0.,time*0.005),2.8,4);
     clouds=smoothstep(0.05,0.50,clouds);
     texCol=mix(texCol,vec3(0.95,0.97,1.),clouds*0.45);
     float polar=smoothstep(0.72,0.92,abs(nn.y)+pfbm(nn,3.,4)*0.08);
     texCol=mix(texCol,vec3(0.90,0.93,0.97),polar*0.6);
   } else if(tp<1.5){
-    // DESERT: dune detail + dust haze
     float dunes=pfbm(nn+vec3(8.),5.,3)*0.5+0.5;
     texCol*=0.85+dunes*0.3;
     float dusty=exp(-nn.y*nn.y*8.)*pfbm(nn+vec3(time*0.002),1.5,4)*0.5;
     texCol=mix(texCol,vec3(0.70,0.50,0.30),clamp(dusty,0.,1.)*0.15);
   } else if(tp<2.5){
-    // ICE: crack network + frost
     float cr1=1.-smoothstep(0.,0.06,abs(snoise(nn*5.)));
     float cr2=1.-smoothstep(0.,0.04,abs(snoise(nn*3.5+vec3(20.))));
     float cracks=max(cr1*0.8,cr2*0.5);
@@ -341,13 +322,11 @@ void main(){
     float frost=smoothstep(0.85,0.95,abs(nn.y));
     texCol=mix(texCol,vec3(0.90,0.93,0.97),frost*0.3);
   } else if(tp<3.5){
-    // GAS GIANT: turbulent wisps
     float turb=pfbm(nn*1.5+vec3(time*0.002,0.,0.),3.,4);
     float wisps=pfbm(nn*3.+vec3(nn.y*2.+time*0.003,0.,0.),5.,3);
     texCol*=1.+turb*0.12;
     texCol+=vec3(0.04,0.06,0.10)*smoothstep(0.2,0.6,wisps);
   } else if(tp<4.5){
-    // LAVA: emissive veins over crust texture
     emissive=true;
     float v1=abs(snoise(nn*4.+vec3(time*0.005,0.,0.)));
     float v2=abs(snoise(nn*7.+vec3(0.,time*0.003,5.)));
@@ -359,14 +338,12 @@ void main(){
     vec3 magma=mix(vec3(0.70,0.10,0.),vec3(1.,0.55,0.05),heat);
     texCol=mix(texCol*0.6,magma*pulse,heat*0.8);
   } else if(tp<5.5){
-    // OCEAN: cloud cover + cyclones
     float cl=pfbm(nn*0.9+vec3(time*0.007,time*0.004,0.),2.5,5);
     float cover=smoothstep(-0.10,0.40,cl);
     float cyclone=snoise(vec3(atan(nn.z,nn.x)*1.5,nn.y*4.,time*0.003));
     cover+=smoothstep(0.35,0.55,cyclone)*0.15;
     texCol=mix(texCol,vec3(0.88,0.92,0.96),clamp(cover,0.,1.)*0.55);
   } else {
-    // WATER: thick banded clouds (sub-Neptune)
     float lat=nn.y;
     float bandNoise=pfbm(nn*2.+vec3(time*0.004,0.,0.),3.,4);
     float bands=sin(lat*12.+bandNoise*3.)*0.5+0.5;
@@ -379,55 +356,134 @@ void main(){
 
   vec3 surface=texCol;
 
-  // Lighting
   float NdL=dot(N,L);
   float lit=smoothstep(-0.08,0.20,NdL);
 
-  // Desaturate bright textures slightly to tame hot pixels
   float texLum=dot(surface,vec3(0.2126,0.7152,0.0722));
   surface=mix(surface,vec3(texLum),smoothstep(0.45,0.85,texLum)*0.25);
 
   vec3 col;
   if(emissive){
-    // Both crust and magma respond to lighting; magma has a higher base glow
     vec3 crustCol=surface*(0.015+lit*0.55);
     vec3 magmaCol=surface*(0.12+lit*0.40);
     col=mix(crustCol,magmaCol,emissiveHeat);
   } else {
     col=surface*(0.015+lit*0.65);
-    // Per-type specular
     if(tp<0.5){
-      // Terran: specular on water (dark) areas
       float brightness=dot(surface,vec3(0.3,0.5,0.2));
       float waterMask=1.-smoothstep(0.05,0.18,brightness);
       vec3 halfDir=normalize(L+V);
       float spec=pow(max(dot(N,halfDir),0.),60.);
       col+=vec3(1.,0.97,0.90)*spec*0.12*lit*waterMask;
     } else if(tp>4.5){
-      // Ocean (5) and Water (6): full-surface specular
       vec3 halfDir=normalize(L+V);
       float spec=pow(max(dot(N,halfDir),0.),60.);
       col+=vec3(1.,0.98,0.92)*spec*0.18*lit;
     } else if(tp>1.5&&tp<2.5){
-      // Ice: subtle cool specular
       vec3 halfDir=normalize(L+V);
       float spec=pow(max(dot(N,halfDir),0.),40.);
       col+=vec3(0.9,0.95,1.)*spec*0.10*lit;
     }
   }
 
-  // Atmosphere rim glow (per-planet colors from uniform)
+  // Atmosphere rim glow (kept as fallback — ray-marched atmosphere is separate mesh)
   if(u_atmosStr>0.01){
     float NdV=max(dot(N,V),0.);
     float rim=pow(1.-NdV,4.0);
     col+=u_atmosCol*rim*u_atmosStr*(0.08+lit*0.55);
   }
 
-  // Tonemapping
   col=ACESFilm(col*1.2);
   col=pow(col,vec3(0.96));
   gl_FragColor=vec4(col,1.);
 }`;
+
+// ── v2: Ray-marched atmospheric scattering ──
+
+export const ATMOS_VERT = `varying vec3 vWP;
+void main(){
+  vWP=(modelMatrix*vec4(position,1.0)).xyz;
+  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+}`;
+
+export const ATMOS_FRAG = `precision highp float;
+varying vec3 vWP;
+uniform vec3 u_lightDir;
+uniform vec3 u_camPos;
+uniform vec3 u_center;
+uniform float u_planetR;
+uniform float u_atmosR;
+uniform float u_scaleH;
+uniform vec3 u_scatterCoeff;
+uniform float u_density;
+uniform float u_strength;
+
+vec2 raySphere(vec3 ro, vec3 rd, vec3 c, float r){
+  vec3 oc=ro-c;
+  float b=dot(oc,rd);
+  float cc=dot(oc,oc)-r*r;
+  float d=b*b-cc;
+  if(d<0.0) return vec2(-1.0);
+  float sq=sqrt(d);
+  return vec2(-b-sq,-b+sq);
+}
+
+float densityAt(vec3 p){
+  float h=(length(p-u_center)-u_planetR)/(u_atmosR-u_planetR);
+  return exp(-h/u_scaleH)*u_density;
+}
+
+float opticalDepth(vec3 from, vec3 dir, float len){
+  float step=len/6.0;
+  float depth=0.0;
+  vec3 p=from+dir*step*0.5;
+  for(int i=0;i<6;i++){
+    depth+=densityAt(p)*step;
+    p+=dir*step;
+  }
+  return depth;
+}
+
+void main(){
+  vec3 ro=u_camPos;
+  vec3 rd=normalize(vWP-u_camPos);
+
+  vec2 ah=raySphere(ro,rd,u_center,u_atmosR);
+  if(ah.x<0.0&&ah.y<0.0) discard;
+
+  vec2 ph=raySphere(ro,rd,u_center,u_planetR);
+  float tS=max(ah.x,0.0);
+  float tE=ah.y;
+  if(ph.x>0.0) tE=min(tE,ph.x);
+  if(tS>=tE) discard;
+
+  float pathLen=tE-tS;
+  const int STEPS=12;
+  float step=pathLen/float(STEPS);
+  vec3 inScatter=vec3(0.0);
+  float viewOD=0.0;
+  vec3 sp=ro+rd*(tS+step*0.5);
+
+  for(int i=0;i<STEPS;i++){
+    float ld=densityAt(sp);
+    viewOD+=ld*step;
+    vec2 lah=raySphere(sp,u_lightDir,u_center,u_atmosR);
+    float lOD=opticalDepth(sp,u_lightDir,lah.y);
+    vec2 lph=raySphere(sp,u_lightDir,u_center,u_planetR);
+    float shadow=lph.x>0.0?0.0:1.0;
+    vec3 tr=exp(-(lOD+viewOD)*u_scatterCoeff);
+    inScatter+=ld*tr*u_scatterCoeff*step*shadow;
+    sp+=rd*step;
+  }
+
+  float cosT=dot(rd,u_lightDir);
+  float phase=0.75*(1.0+cosT*cosT);
+  vec3 col=inScatter*phase*u_strength;
+  float a=clamp(length(col)*3.0,0.0,1.0);
+  gl_FragColor=vec4(col,a);
+}`;
+
+// ── Ring shader — v2: with planet shadow via ray-sphere intersection ──
 
 export const RING_VERT = `varying float vR;varying vec3 vWorldNormal;varying vec3 vWorldPos;
 void main(){vR=length(position.xy);vWorldNormal=normalize((modelMatrix*vec4(normal,0.)).xyz);
@@ -436,8 +492,19 @@ void main(){vR=length(position.xy);vWorldNormal=normalize((modelMatrix*vec4(norm
 export const RING_FRAG = `precision highp float;
 varying float vR;varying vec3 vWorldNormal;varying vec3 vWorldPos;
 uniform float u_innerR;uniform float u_outerR;uniform float u_seed;
+uniform vec3 u_planetCenter;uniform float u_planetR;
 float hsh(float n){return fract(sin(n)*43758.5453);}
 float hsh2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+
+float raySphere(vec3 ro, vec3 rd, vec3 center, float radius){
+  vec3 oc=ro-center;
+  float b=dot(oc,rd);
+  float c=dot(oc,oc)-radius*radius;
+  float disc=b*b-c;
+  if(disc<0.0) return -1.0;
+  return -b-sqrt(disc);
+}
+
 void main(){float rP=clamp((vR-u_innerR)/(u_outerR-u_innerR),0.,1.);
   float angle=atan(vWorldPos.z,vWorldPos.x);
   float an=hsh2(vec2(angle*8.,u_seed))*.3+hsh2(vec2(angle*20.,u_seed*1.5))*.15;
@@ -447,10 +514,26 @@ void main(){float rP=clamp((vR-u_innerR)/(u_outerR-u_innerR),0.,1.);
   float gap=smoothstep(gc-gw,gc,rP)*smoothstep(gc+gw,gc,rP);density*=1.-gap*(.7+hsh(u_seed*13.)*.3);
   float gap2=smoothstep(.22,.25,rP)*smoothstep(.28,.25,rP);density*=1.-gap2*.4;
   vec3 L=normalize(-vWorldPos);float lit=.3+.7*abs(dot(vWorldNormal,L));
+
+  // v2: planet shadow on ring
+  float shadow=1.0;
+  if(u_planetR>0.0){
+    float hit=raySphere(vWorldPos,L,u_planetCenter,u_planetR);
+    if(hit>0.0){
+      float closestT=max(-dot(vWorldPos-u_planetCenter,L),0.);
+      vec3 closest=vWorldPos+L*closestT;
+      float closestDist=length(closest-u_planetCenter);
+      float penumbra=smoothstep(u_planetR*0.96,u_planetR*1.04,closestDist);
+      shadow=0.08+0.92*penumbra;
+    }
+  }
+
   float rH=hsh(u_seed*1.23);vec3 dc=rH<.33?vec3(.75,.65,.52):rH<.66?vec3(.65,.58,.50):vec3(.72,.58,.43);
   dc*=.85+.3*hsh2(vec2(rP*15.+angle*3.,u_seed));
-  vec3 col=dc*density*lit;float alpha=clamp(density*.6,0.,.75);
+  vec3 col=dc*density*lit*shadow;float alpha=clamp(density*.6,0.,.75);
   if(alpha<.02)discard;gl_FragColor=vec4(col,alpha);}`;
+
+// ── Galaxy star shader (unchanged) ──
 
 export const GALAXY_STAR_VERT = `
 attribute float aSize;
@@ -479,42 +562,33 @@ void main(){
   vec2 uv=gl_PointCoord-0.5;
   float d=length(uv);
 
-  // Bright Gaussian core
   float core=exp(-d*d*120.0);
 
-  // 4-point diffraction spikes
   float sH=exp(-abs(uv.y)*35.0)*exp(-abs(uv.x)*5.5);
   float sV=exp(-abs(uv.x)*35.0)*exp(-abs(uv.y)*5.5);
   float spikes=(sH+sV)*0.25;
 
-  // Soft halos (two layers) — colored with saturated hue
   float halo=exp(-d*4.0)*0.40;
   float halo2=exp(-d*10.0)*0.55;
 
   float total=core+spikes+halo+halo2;
 
-  // Saturate the star color for vivid EUV look
   float lum=dot(vCol,vec3(0.2126,0.7152,0.0722));
   vec3 saturated=mix(vec3(lum),vCol,1.6);
   saturated=max(saturated,vec3(0.0));
 
-  // Luminance compensation — warmer (dimmer) stars get stronger glow
   float lumComp=1.0+0.5*(1.0-clamp(lum*2.5,0.0,1.0));
 
-  // White-hot core grading into vivid spectral color
   vec3 col=mix(saturated,vec3(1.0),smoothstep(0.0,0.9,core));
 
-  // Halo gets the saturated color with luminance compensation
   vec3 haloCol=saturated*(halo+halo2)*1.5*lumComp;
   vec3 coreCol=col*(core+spikes);
   col=coreCol+haloCol;
   col*=vBright;
 
-  // Visited ring indicator — prominent teal ring + inner glow
   if(vVisited>0.5){
     float ring=smoothstep(0.15,0.19,d)*smoothstep(0.32,0.24,d);
     col+=vec3(0.2,0.8,0.55)*ring*0.9;
-    // Subtle inner fill to mark as charted
     float fill=1.0-smoothstep(0.0,0.20,d);
     col+=vec3(0.1,0.4,0.3)*fill*0.15;
   }
@@ -523,7 +597,7 @@ void main(){
   gl_FragColor=vec4(col,min(total,1.0));
 }`;
 
-// ── Ship marker in galaxy view ──
+// ── Ship marker (unchanged) ──
 
 export const SHIP_MARKER_VERT = `
 uniform float u_time;
@@ -541,10 +615,7 @@ void main(){
   vec2 uv=gl_PointCoord-0.5;
   float d=length(uv);
 
-  // Diamond shape
   float diamond=1.0-smoothstep(0.0,0.02,abs(uv.x)+abs(uv.y)-0.28);
-
-  // Outer glow
   float glow=exp(-d*8.0)*0.4;
   float pulse=0.85+0.15*sin(u_time*2.5);
 
@@ -554,7 +625,7 @@ void main(){
   gl_FragColor=vec4(col,min(alpha,1.0));
 }`;
 
-// ── Nebula clouds in galaxy view ──
+// ── Nebula clouds (unchanged shader, billboarding handled in JS) ──
 
 export const NEBULA_VERT = `
 varying vec2 vUv;
@@ -575,10 +646,8 @@ void main(){
   vec2 p=(vUv-0.5)*2.0;
   float r=length(p);
 
-  // Radial falloff
   float falloff=1.0-smoothstep(0.3,1.0,r);
 
-  // Animated FBM noise
   vec3 noiseCoord=vec3(p*1.5+u_seed*10.0,u_time*0.01+u_seed);
   float n=fbm4(noiseCoord)*0.5+0.5;
   float n2=fbm4(noiseCoord*2.0+vec3(50.0))*0.5+0.5;
@@ -590,3 +659,83 @@ void main(){
   if(density<0.001)discard;
   gl_FragColor=vec4(col,density);
 }`;
+
+// ── v2: Film grain + vignette post-processing shader ──
+
+export const FILM_GRAIN_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null },
+    u_time: { value: 0 },
+    u_grainIntensity: { value: 0.025 },
+    u_vignetteStrength: { value: 1.2 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `
+    precision highp float;
+    uniform sampler2D tDiffuse;
+    uniform float u_time;
+    uniform float u_grainIntensity;
+    uniform float u_vignetteStrength;
+    varying vec2 vUv;
+
+    float hash(vec2 p){
+      vec3 p3=fract(vec3(p.xyx)*0.1031);
+      p3+=dot(p3,p3.yzx+33.33);
+      return fract((p3.x+p3.y)*p3.z);
+    }
+
+    void main(){
+      vec4 color=texture2D(tDiffuse,vUv);
+
+      // Film grain
+      if(u_grainIntensity>0.001){
+        float n1=hash(vUv*vec2(1920.,1080.)+vec2(u_time*137.,u_time*71.));
+        float n2=hash(vUv*vec2(1080.,1920.)+vec2(u_time*93.,u_time*51.));
+        float grain=(n1+n2)*0.5-0.5;
+        float lum=dot(color.rgb,vec3(0.2126,0.7152,0.0722));
+        float str=u_grainIntensity*(1.2-lum*0.7);
+        color.rgb+=grain*str;
+      }
+
+      // Vignette
+      if(u_vignetteStrength>0.01){
+        vec2 vc=vUv-0.5;
+        float vig=1.0-dot(vc,vc)*u_vignetteStrength;
+        vig=smoothstep(0.0,1.0,vig);
+        color.rgb*=mix(0.4,1.0,vig);
+      }
+
+      gl_FragColor=color;
+    }
+  `
+};
+
+// ── v2: Bloom tint pass — re-saturates bloom areas to preserve spectral colors ──
+
+export const BLOOM_TINT_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null },
+    u_enabled: { value: 1.0 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `
+    precision highp float;
+    uniform sampler2D tDiffuse;
+    uniform float u_enabled;
+    varying vec2 vUv;
+
+    void main(){
+      vec4 color=texture2D(tDiffuse,vUv);
+      if(u_enabled<0.5){ gl_FragColor=color; return; }
+
+      float lum=dot(color.rgb,vec3(0.2126,0.7152,0.0722));
+      // Bloom areas are bright — re-saturate them to counteract white washout
+      float bloomMask=smoothstep(0.12,0.5,lum);
+      // Boost saturation in bloom areas
+      vec3 saturated=mix(vec3(lum),color.rgb,1.0+bloomMask*0.8);
+      color.rgb=mix(color.rgb,saturated,bloomMask*0.7);
+
+      gl_FragColor=color;
+    }
+  `
+};

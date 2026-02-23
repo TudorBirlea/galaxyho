@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
-import { STAR_VERT, STAR_FRAG, PLANET_VERT, PLANET_FRAG, RING_VERT, RING_FRAG } from './shaders.js';
+import { STAR_VERT, STAR_FRAG, PLANET_VERT, PLANET_FRAG, RING_VERT, RING_FRAG,
+         ATMOS_VERT, ATMOS_FRAG } from './shaders.js';
 import { mulberry32 } from './utils.js';
 import { generatePlanets } from './data.js';
 import { systemGroup, camera, renderer } from './engine.js';
@@ -29,7 +30,7 @@ export function buildSystemView(star) {
   clearSystemView();
   const sc = CONFIG.spectral[star.spectralClass];
 
-  // Central star — fullscreen quad with ray-marched shader (matches experiment)
+  // Central star — fullscreen quad with ray-marched shader
   const starRadius = 4 * sc.starScale;
   const starGeo = new THREE.PlaneGeometry(2, 2);
   app.systemStarMesh = new THREE.Mesh(starGeo, new THREE.ShaderMaterial({
@@ -43,6 +44,8 @@ export function buildSystemView(star) {
       u_euvMix: { value: 0.88 },
       u_starColor: { value: new THREE.Vector3(sc.euvTint[0], sc.euvTint[1], sc.euvTint[2]) },
       u_invViewProj: { value: new THREE.Matrix4() },
+      // v2: configurable rotation speed
+      u_rotSpeed: { value: 0.012 },
     },
     depthWrite: false,
     depthTest: false,
@@ -51,7 +54,7 @@ export function buildSystemView(star) {
   app.systemStarMesh.renderOrder = -1;
   systemGroup.add(app.systemStarMesh);
 
-  // Invisible depth sphere — writes depth buffer so planets/orbits are occluded behind the star
+  // Invisible depth sphere
   const depthSphere = new THREE.Mesh(
     new THREE.SphereGeometry(starRadius, 32, 32),
     new THREE.MeshBasicMaterial({ colorWrite: false })
@@ -82,6 +85,35 @@ export function buildSystemView(star) {
     mesh.userData = { planet: p };
     systemGroup.add(mesh);
 
+    // v2: Ray-marched atmospheric scattering mesh
+    let atmosMesh = null;
+    const pt = CONFIG.planetTypes[p.type];
+    if (pt.scatter && pt.scatter.strength > 0) {
+      const sc = pt.scatter;
+      const atmosR = p.visualSize * sc.shell;
+      atmosMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(atmosR, 48, 48),
+        new THREE.ShaderMaterial({
+          vertexShader: ATMOS_VERT, fragmentShader: ATMOS_FRAG,
+          uniforms: {
+            u_lightDir: { value: new THREE.Vector3(0, 0, 1) },
+            u_camPos: { value: camera.position },
+            u_center: { value: new THREE.Vector3() },
+            u_planetR: { value: p.visualSize },
+            u_atmosR: { value: atmosR },
+            u_scaleH: { value: sc.scaleH },
+            u_scatterCoeff: { value: new THREE.Vector3(sc.coeff[0], sc.coeff[1], sc.coeff[2]) },
+            u_density: { value: sc.density },
+            u_strength: { value: sc.strength },
+          },
+          transparent: true, side: THREE.BackSide, depthWrite: false, blending: THREE.AdditiveBlending,
+        })
+      );
+      atmosMesh.renderOrder = 2;
+      systemGroup.add(atmosMesh);
+    }
+
+    // Ring
     let ring = null;
     if (p.hasRings) {
       const rRng = mulberry32(p.seed + 999);
@@ -90,7 +122,12 @@ export function buildSystemView(star) {
         new THREE.RingGeometry(ri, ro, 128, 4),
         new THREE.ShaderMaterial({
           vertexShader: RING_VERT, fragmentShader: RING_FRAG,
-          uniforms: { u_innerR: { value: ri }, u_outerR: { value: ro }, u_seed: { value: (p.seed % 1000) / 1000 } },
+          uniforms: {
+            u_innerR: { value: ri }, u_outerR: { value: ro }, u_seed: { value: (p.seed % 1000) / 1000 },
+            // v2: planet shadow uniforms
+            u_planetCenter: { value: new THREE.Vector3() },
+            u_planetR: { value: p.visualSize },
+          },
           transparent: true, side: THREE.DoubleSide, depthWrite: false,
         })
       );
@@ -110,7 +147,7 @@ export function buildSystemView(star) {
     oLine.renderOrder = 1;
     systemGroup.add(oLine);
 
-    app.systemPlanets.push({ mesh, ring, data: p, orbitLine: oLine });
+    app.systemPlanets.push({ mesh, ring, data: p, orbitLine: oLine, atmosMesh });
   }
 
   // System starfield (3D points with parallax)
@@ -146,11 +183,11 @@ const _ivp = new THREE.Matrix4();
 export function updateSystemView(time) {
   if (app.systemStarMesh) {
     app.systemStarMesh.material.uniforms.u_time.value = time;
-    // Update inverse view-projection for ray reconstruction
     _ivp.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).invert();
     app.systemStarMesh.material.uniforms.u_invViewProj.value.copy(_ivp);
   }
   const ld = new THREE.Vector3();
+  const worldLd = new THREE.Vector3();
   for (const p of app.systemPlanets) {
     const a = p.data.orbitPhase + time * p.data.orbitSpeed;
     const px = Math.cos(a) * p.data.orbitRadius;
@@ -159,7 +196,23 @@ export function updateSystemView(time) {
     p.mesh.material.uniforms.u_time.value = time;
     ld.set(-px, 0, -pz).normalize().transformDirection(camera.matrixWorldInverse);
     p.mesh.material.uniforms.u_lightDir.value.copy(ld);
-    if (p.ring) p.ring.position.set(px, 0, pz);
+
+    if (p.ring) {
+      p.ring.position.set(px, 0, pz);
+      // v2: update planet shadow center for ring shader
+      p.ring.material.uniforms.u_planetCenter.value.set(px, 0, pz);
+    }
+
+    // v2: update atmosphere mesh position + uniforms
+    if (p.atmosMesh) {
+      p.atmosMesh.position.set(px, 0, pz);
+      const am = p.atmosMesh.material.uniforms;
+      am.u_center.value.set(px, 0, pz);
+      am.u_camPos.value.copy(camera.position);
+      // World-space light direction (toward star at origin)
+      worldLd.set(-px, 0, -pz).normalize();
+      am.u_lightDir.value.copy(worldLd);
+    }
   }
 }
 
@@ -184,12 +237,10 @@ export function capturePlanetSnapshot(planetEntry) {
   initSnap();
   const geo = new THREE.SphereGeometry(1, 48, 48);
   const mat = planetEntry.mesh.material.clone();
-  // Nice 3/4 lighting angle in snapshot camera view space
   mat.uniforms.u_lightDir.value = new THREE.Vector3(0.5, 0.25, 0.75).normalize();
   const mesh = new THREE.Mesh(geo, mat);
   snapScene.add(mesh);
 
-  // Add ring if planet has one
   let ringMesh = null;
   if (planetEntry.ring) {
     ringMesh = planetEntry.ring.clone();
@@ -218,7 +269,6 @@ export function capturePlanetSnapshot(planetEntry) {
   mat.dispose();
   if (ringMesh) snapScene.remove(ringMesh);
 
-  // WebGL reads bottom-up; canvas is top-down
   const img = snapCtx.createImageData(SNAP_SIZE, SNAP_SIZE);
   for (let y = 0; y < SNAP_SIZE; y++) {
     const src = (SNAP_SIZE - 1 - y) * SNAP_SIZE * 4;

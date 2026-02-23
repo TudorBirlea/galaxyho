@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { GALAXY_STAR_VERT, GALAXY_STAR_FRAG, SHIP_MARKER_VERT, SHIP_MARKER_FRAG,
          NEBULA_VERT, NEBULA_FRAG } from './shaders.js';
-import { galaxyGroup } from './engine.js';
+import { galaxyGroup, camera } from './engine.js';
 import { app } from './app.js';
 import { mulberry32 } from './utils.js';
 
@@ -10,58 +10,94 @@ export function buildGalaxyView(galaxy, state) {
   // Clear previous
   while (galaxyGroup.children.length) { const c = galaxyGroup.children[0]; galaxyGroup.remove(c); }
   app.starSprites = [];
+  app.nebulaMeshes = [];
+  app.bgStarLayers = [];
 
-  // Background starfield
-  const bgN = 4000, bgPos = new Float32Array(bgN * 3), bgCol = new Float32Array(bgN * 3), bgSz = new Float32Array(bgN);
-  for (let i = 0; i < bgN; i++) {
-    const r = 100 + Math.random() * 500, th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
-    bgPos[i*3] = r*Math.sin(ph)*Math.cos(th); bgPos[i*3+1] = r*Math.sin(ph)*Math.sin(th); bgPos[i*3+2] = r*Math.cos(ph);
-    const t = Math.random(); bgCol[i*3] = t<0.3?0.7:1; bgCol[i*3+1] = t<0.3?0.8:t<0.7?1:0.85; bgCol[i*3+2] = t<0.3?1:t<0.7?0.95:0.7;
-    bgSz[i] = 0.8 + Math.random() * 2;
+  // ── v2: Multi-layer background starfield with parallax ──
+  app.camOrigin = camera.position.clone();
+  for (const layer of CONFIG.bgStarLayers) {
+    const positions = new Float32Array(layer.count * 3);
+    const colors = new Float32Array(layer.count * 3);
+    const sizes = new Float32Array(layer.count);
+    const c = new THREE.Color(layer.color);
+    for (let i = 0; i < layer.count; i++) {
+      const th = Math.random() * Math.PI * 2;
+      const ph = Math.acos(2 * Math.random() - 1);
+      const r = layer.radius * (0.8 + Math.random() * 0.4);
+      positions[i*3]   = r * Math.sin(ph) * Math.cos(th);
+      positions[i*3+1] = r * Math.sin(ph) * Math.sin(th);
+      positions[i*3+2] = r * Math.cos(ph);
+      // Slight color variation
+      const t = Math.random();
+      colors[i*3]   = c.r * (0.8 + t * 0.4);
+      colors[i*3+1] = c.g * (0.8 + t * 0.4);
+      colors[i*3+2] = c.b * (0.8 + t * 0.4);
+      sizes[i] = layer.size * (0.6 + Math.random() * 0.8);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: `attribute float size;varying vec3 vC;void main(){vC=color;vec4 mv=modelViewMatrix*vec4(position,1);gl_PointSize=size*(200./-mv.z);gl_Position=projectionMatrix*mv;}`,
+      fragmentShader: `varying vec3 vC;void main(){float d=length(gl_PointCoord-.5)*2.;gl_FragColor=vec4(vC,(1.-smoothstep(0.,1.,d))*.7);}`,
+      transparent: true, vertexColors: true, depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    const points = new THREE.Points(geo, mat);
+    galaxyGroup.add(points);
+    app.bgStarLayers.push({ points, drift: layer.drift });
   }
-  const bgGeo = new THREE.BufferGeometry();
-  bgGeo.setAttribute('position', new THREE.BufferAttribute(bgPos, 3));
-  bgGeo.setAttribute('color', new THREE.BufferAttribute(bgCol, 3));
-  bgGeo.setAttribute('size', new THREE.BufferAttribute(bgSz, 1));
-  galaxyGroup.add(new THREE.Points(bgGeo, new THREE.ShaderMaterial({
-    vertexShader: `attribute float size;varying vec3 vC;void main(){vC=color;vec4 mv=modelViewMatrix*vec4(position,1);gl_PointSize=size*(200./-mv.z);gl_Position=projectionMatrix*mv;}`,
-    fragmentShader: `varying vec3 vC;void main(){float d=length(gl_PointCoord-.5)*2.;gl_FragColor=vec4(vC,(1.-smoothstep(0.,1.,d))*.7);}`,
-    transparent: true, vertexColors: true, depthWrite: false, blending: THREE.AdditiveBlending
-  })));
 
-  // Nebula clouds — large semi-transparent noise planes
+  // ── v2: Multi-layer volumetric nebulae ──
   const nebulaColors = [
-    new THREE.Color(0.15, 0.08, 0.25), // muted purple
-    new THREE.Color(0.08, 0.12, 0.22), // deep blue
-    new THREE.Color(0.20, 0.10, 0.05), // warm ember
-    new THREE.Color(0.05, 0.15, 0.18), // teal haze
+    new THREE.Color(0.15, 0.08, 0.25),
+    new THREE.Color(0.08, 0.12, 0.22),
+    new THREE.Color(0.20, 0.10, 0.05),
+    new THREE.Color(0.05, 0.15, 0.18),
   ];
   const nebulaRng = mulberry32(galaxy.seed + 777);
   const nebulaCount = 10;
+  const layerCount = CONFIG.nebulaLayers;
+  const layerSpread = CONFIG.nebulaLayerSpread;
+
   for (let i = 0; i < nebulaCount; i++) {
-    const size = 30 + nebulaRng() * 50;
-    const geo = new THREE.PlaneGeometry(size, size);
+    const baseSize = 30 + nebulaRng() * 50;
+    const baseSeed = nebulaRng();
     const colorIdx = Math.floor(nebulaRng() * nebulaColors.length);
-    const mat = new THREE.ShaderMaterial({
-      vertexShader: NEBULA_VERT,
-      fragmentShader: NEBULA_FRAG,
-      uniforms: {
-        u_time: { value: 0 },
-        u_color: { value: nebulaColors[colorIdx] },
-        u_seed: { value: nebulaRng() },
-      },
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    });
-    const mesh = new THREE.Mesh(geo, mat);
     const R = CONFIG.galaxy.fieldRadius;
-    mesh.position.set(
-      (nebulaRng() - 0.5) * R * 1.6,
-      (nebulaRng() - 0.5) * 6,
-      (nebulaRng() - 0.5) * R * 1.6,
-    );
-    mesh.rotation.x = -Math.PI / 2 + (nebulaRng() - 0.5) * 0.5;
-    mesh.rotation.z = nebulaRng() * Math.PI;
-    galaxyGroup.add(mesh);
+    const cx = (nebulaRng() - 0.5) * R * 1.6;
+    const cy = (nebulaRng() - 0.5) * 6;
+    const cz = (nebulaRng() - 0.5) * R * 1.6;
+
+    for (let j = 0; j < layerCount; j++) {
+      const layerSize = baseSize * (0.7 + j * 0.12);
+      const layerSeed = baseSeed + j * 1.3;
+      // Core layers brighter, outer layers dimmer
+      const layerOpacity = 0.07 * (1.0 - j * 0.12);
+      const layerColor = nebulaColors[colorIdx].clone();
+      layerColor.r = Math.min(1, layerColor.r + j * 0.015);
+      layerColor.b = Math.min(1, layerColor.b + j * 0.01);
+
+      const geo = new THREE.PlaneGeometry(layerSize, layerSize);
+      const mat = new THREE.ShaderMaterial({
+        vertexShader: NEBULA_VERT,
+        fragmentShader: NEBULA_FRAG,
+        uniforms: {
+          u_time: { value: 0 },
+          u_color: { value: layerColor },
+          u_seed: { value: layerSeed },
+        },
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(
+        cx + (nebulaRng() - 0.5) * 10,
+        cy + (j - Math.floor(layerCount / 2)) * layerSpread / layerCount + (nebulaRng() - 0.5) * 3,
+        cz + (nebulaRng() - 0.5) * 10,
+      );
+      galaxyGroup.add(mesh);
+      app.nebulaMeshes.push(mesh);
+    }
   }
 
   // Build galaxy stars as a single Points object
@@ -132,7 +168,6 @@ export function buildGalaxyView(galaxy, state) {
       const to = new THREE.Vector3(adj.position.x, adj.position.y, adj.position.z);
 
       if (bothVisited) {
-        // Traveled route — bright thick tube
         const dir = to.clone().sub(from);
         const len = dir.length();
         const tube = new THREE.Mesh(traveledTubeGeo, new THREE.MeshBasicMaterial({
@@ -143,7 +178,6 @@ export function buildGalaxyView(galaxy, state) {
         tube.scale.set(1, 1, len);
         galaxyGroup.add(tube);
       } else {
-        // Untraveled — thin line
         const lineMat = new THREE.LineBasicMaterial({
           color: bothReachable ? 0x334466 : 0x111118,
           transparent: true, opacity: anyReachable ? 0.2 : 0.04, depthWrite: false
