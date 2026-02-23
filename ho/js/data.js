@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=3.5';
-import { mulberry32, hashInt, lerp, genStarName, pickSpectralClass, ROMAN, SPECIALS } from './utils.js?v=3.5';
+import { CONFIG } from './config.js?v=3.6';
+import { mulberry32, hashInt, lerp, genStarName, pickSpectralClass, ROMAN, SPECIALS } from './utils.js?v=3.6';
 
 export function generateGalaxy(seed) {
   const rng = mulberry32(seed);

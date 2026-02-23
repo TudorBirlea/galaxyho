@@ -858,57 +858,81 @@ void main(){
   gl_FragColor=vec4(u_color,alpha);
 }`;
 
-// ── v3: Black hole system view shader — gravitational lensing + accretion disk ──
+// ── v3: Black hole system view shader — geodesic ray marching + accretion disk ──
 
 export const BLACK_HOLE_FRAG = `precision highp float;
 varying vec2 vUV;
 uniform float u_time;
 uniform float u_starRadius;
 uniform mat4 u_invViewProj;
+uniform float u_diskTilt;
 ${NOISE_GLSL}
 
 vec3 ACESFilm(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.,1.);}
 
-float raySphere(vec3 ro,vec3 rd,float radius){
-  float b=dot(ro,rd);float c=dot(ro,ro)-radius*radius;
-  float disc=b*b-c;if(disc<0.)return -1.;return -b-sqrt(disc);
+// Disk coordinate system (tilted plane)
+mat3 diskRotation;
+void initDiskRotation(float tilt){
+  float c=cos(tilt),s=sin(tilt);
+  diskRotation=mat3(1.,0.,0., 0.,c,-s, 0.,s,c);
 }
 
-void main(){
-  vec4 farClip=u_invViewProj*vec4(vUV,1.,1.);
-  farClip/=farClip.w;
-  vec3 rd=normalize(farClip.xyz-cameraPosition);
-  vec3 ro=cameraPosition/u_starRadius;
+// Sample the accretion disk at a point in disk-local coordinates
+vec4 sampleDisk(vec3 p, vec3 rd){
+  vec3 dp=diskRotation*p;
+  float r=length(dp.xz);
+  float diskInner=1.4;
+  float diskOuter=5.0;
+  if(r<diskInner||r>diskOuter) return vec4(0.);
 
+  // Vertical Gaussian falloff (volumetric slab)
+  float thickness=0.08+0.04*(r-diskInner)/(diskOuter-diskInner);
+  float vertFalloff=exp(-dp.y*dp.y/(2.*thickness*thickness));
+  if(vertFalloff<0.01) return vec4(0.);
+
+  // Radial brightness: T ~ r^(-3/4), brightest near ISCO
+  float rNorm=(r-diskInner)/(diskOuter-diskInner);
+  float radialBright=pow(max(1.-rNorm,0.01),0.75)*1.8;
+
+  // Spiral structure
+  float angle=atan(dp.z,dp.x);
+  float spiral=0.7+0.3*snoise(vec3(angle*1.5+u_time*0.15,r*2.5,u_time*0.05));
+  float spiral2=0.8+0.2*snoise(vec3(angle*3.+u_time*0.1,r*4.,0.5));
+  float density=radialBright*spiral*spiral2*vertFalloff;
+
+  // Temperature color: inner=white-yellow, middle=orange, outer=deep red
+  vec3 innerCol=vec3(1.,0.95,0.8);
+  vec3 midCol=vec3(1.,0.55,0.15);
+  vec3 outerCol=vec3(0.4,0.08,0.02);
+  vec3 col;
+  if(rNorm<0.3) col=mix(innerCol,midCol,rNorm/0.3);
+  else col=mix(midCol,outerCol,(rNorm-0.3)/0.7);
+
+  // Doppler beaming: orbital velocity is tangential
+  vec3 tangent=diskRotation*normalize(vec3(-dp.z,0.,dp.x));
+  float orbitalSpeed=0.4/sqrt(max(r,1.5));
+  float dopplerShift=dot(tangent*orbitalSpeed,normalize(rd));
+  float boost=1.+dopplerShift*2.5;
+  density*=boost*boost;
+  col=mix(col,vec3(0.7,0.8,1.),max(dopplerShift*0.3,0.));
+
+  return vec4(col*density,density);
+}
+
+// Background starfield with given ray direction
+vec3 bgStars(vec3 rd){
   vec3 col=vec3(0.);
-  float bc=dot(ro,rd);
-  float closestDist=length(ro+rd*max(-bc,0.));
-  float edgeDist=max(0.,closestDist-1.);
-
-  float hit=raySphere(ro,rd,1.0);
-  if(hit>0.){
-    gl_FragColor=vec4(0.,0.,0.,1.);
-    return;
-  }
-
-  // Gravitational lensing — warp background ray direction
-  float deflection=0.4/max(edgeDist,0.05);
-  deflection=min(deflection,3.0);
-  vec3 toCenter=normalize(-ro-rd*max(-bc,0.));
-  vec3 warpedRd=normalize(rd+toCenter*deflection*0.1);
-
-  // Background starfield with warped ray
-  vec3 dN=normalize(warpedRd);
+  vec3 dN=normalize(rd);
   float theta=acos(clamp(dN.y,-1.,1.));
   float phi=atan(dN.z,dN.x);
   for(int layer=0;layer<3;layer++){
     float fl=float(layer);
-    float density=120.+fl*80.;
-    vec2 grid=vec2(phi*density,theta*density);
+    float dens=120.+fl*80.;
+    vec2 grid=vec2(phi*dens,theta*dens);
     vec2 cellId=floor(grid);
     vec2 cellUV=fract(grid)-0.5;
     float h=fract(sin(dot(cellId+fl*50.,vec2(127.1,311.7)))*43758.5453);
-    float threshold=0.96+fl*0.015;
+    float threshold=0.96+fl*0.012;
     if(h>threshold){
       vec2 starOff=vec2(
         fract(sin(dot(cellId+fl*50.,vec2(269.5,183.3)))*43758.5453),
@@ -917,40 +941,77 @@ void main(){
       float dist=length(cellUV-starOff*0.6);
       float brightness=(h-threshold)/(1.-threshold);
       float twinkle=0.7+0.3*sin(u_time*(1.+h*3.)+h*100.);
-      float point=exp(-dist*dist*800.)*brightness*twinkle;
+      float point=exp(-dist*dist*900.)*brightness*twinkle;
       vec3 sCol=mix(vec3(0.6,0.7,1.),vec3(1.,0.85,0.7),fract(h*7.));
-      col+=sCol*point*(1.-fl*0.3)*0.5;
+      col+=sCol*point*(1.-fl*0.25)*0.6;
+    }
+  }
+  return col;
+}
+
+void main(){
+  vec4 farClip=u_invViewProj*vec4(vUV,1.,1.);
+  farClip/=farClip.w;
+  vec3 rd=normalize(farClip.xyz-cameraPosition);
+  vec3 ro=cameraPosition/u_starRadius;
+
+  initDiskRotation(u_diskTilt);
+
+  // ── Geodesic ray march ──
+  vec3 pos=ro;
+  vec3 vel=rd;
+  float dt=0.3;
+  vec3 col=vec3(0.);
+  float diskAccum=0.;
+  bool hitHorizon=false;
+  float closestR=100.;
+
+  for(int i=0;i<60;i++){
+    float r=length(pos);
+    closestR=min(closestR,r);
+
+    if(r<1.02){ hitHorizon=true; break; }
+    if(r>30.&&i>5) break;
+
+    // Gravitational acceleration: a = -GM/r^2 * rhat
+    vec3 rhat=pos/r;
+    float accel=1.5/(r*r);
+    vel-=rhat*accel*dt;
+    vel=normalize(vel);
+
+    // Adaptive step size
+    dt=max(0.05,min(0.5,(r-1.0)*0.3));
+    pos+=vel*dt;
+
+    // Sample accretion disk along the curved ray
+    vec4 diskSample=sampleDisk(pos,vel);
+    if(diskSample.a>0.001){
+      float alpha=diskSample.a*dt*0.8;
+      col+=diskSample.rgb*alpha*(1.-diskAccum);
+      diskAccum+=alpha*(1.-diskAccum);
+      if(diskAccum>0.95) break;
     }
   }
 
-  // Accretion disk — ray-plane intersection at y=0
-  float diskR=2.8, diskInner=1.3;
-  if(abs(rd.y)>0.001){
-    float tDisk=-ro.y/rd.y;
-    if(tDisk>0.){
-      vec3 diskHit=ro+rd*tDisk;
-      float diskDist=length(vec2(diskHit.x,diskHit.z));
-      if(diskDist>diskInner && diskDist<diskR){
-        float diskFrac=(diskDist-diskInner)/(diskR-diskInner);
-        float diskBright=(1.-diskFrac)*exp(-diskFrac*2.);
-        float spiral=snoise(vec3(atan(diskHit.z,diskHit.x)*2.,diskDist*3.,u_time*0.1));
-        diskBright*=0.7+0.3*spiral;
-        vec3 diskCol=mix(vec3(1.,0.5,0.1),vec3(0.3,0.6,1.),diskFrac);
-        col+=diskCol*diskBright*1.5;
-      }
-    }
+  // Background stars (using final warped ray direction)
+  if(!hitHorizon){
+    col+=bgStars(vel)*(1.-diskAccum);
   }
 
-  // Photon ring — bright ring at event horizon
-  float photonRing=exp(-edgeDist*15.)*0.8;
-  col+=vec3(1.,0.7,0.3)*photonRing;
+  // Photon ring at photon sphere (~1.5 rs) + horizon edge ring
+  float photonDist=abs(closestR-1.5);
+  float photonRing=exp(-photonDist*20.)*1.2;
+  float horizonRing=exp(-abs(closestR-1.05)*40.)*0.6;
+  vec3 ringCol=vec3(1.,0.7,0.3);
+  col+=ringCol*(photonRing+horizonRing)*(1.-float(hitHorizon)*0.5);
 
-  // Dim glow
-  float outerGlow=exp(-edgeDist*1.5)*0.04;
-  col+=vec3(0.6,0.3,0.1)*outerGlow;
+  // Subtle outer glow
+  float edgeDist=max(closestR-1.,0.);
+  float outerGlow=exp(-edgeDist*2.)*0.03;
+  col+=vec3(0.5,0.25,0.1)*outerGlow;
 
-  col=ACESFilm(col*0.9);
-  float vig=1.-0.15*dot(vUV*0.5,vUV*0.5);
+  col=ACESFilm(col*0.85);
+  float vig=1.-0.12*dot(vUV*0.5,vUV*0.5);
   col*=vig;
   col=pow(col,vec3(0.92));
   gl_FragColor=vec4(col,1.);

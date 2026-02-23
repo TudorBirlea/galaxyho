@@ -1,4 +1,4 @@
-export const VERSION = '3.5';
+export const VERSION = '3.6';
 
 export const CONFIG = {
   galaxy: {
@@ -107,7 +107,7 @@ export const CONFIG = {
     blackHoleCount: [1, 2],
     neutronStarCount: [2, 3],
     whiteDwarfCount: [3, 5],
-    blackHole: { spriteSize: 2.5, color: 0x111122, accretionColor: 0xff6600, starScale: 0.5 },
+    blackHole: { spriteSize: 2.5, color: 0x111122, accretionColor: 0xff6600, starScale: 0.5, diskTilt: 0.3 },
     neutronStar: { spriteSize: 1.4, color: 0xaabbff, pulseSpeed: 12.0, beamLength: 6.0, tempK: 100000, starScale: 0.2 },
     whiteDwarf: { spriteSize: 1.0, color: 0xccddff, tempK: 25000, starScale: 0.3 },
   },
