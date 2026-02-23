@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js?v=3.2';
+import { CONFIG } from './config.js?v=3.3';
 import { GALAXY_STAR_VERT, GALAXY_STAR_FRAG, SHIP_MARKER_VERT, SHIP_MARKER_FRAG,
          NEBULA_VERT, NEBULA_FRAG, DUST_LANE_VERT, DUST_LANE_FRAG,
-         WARP_TRAIL_VERT, WARP_TRAIL_FRAG } from './shaders.js?v=3.2';
-import { galaxyGroup, camera } from './engine.js?v=3.2';
-import { app } from './app.js?v=3.2';
-import { mulberry32 } from './utils.js?v=3.2';
+         WARP_TRAIL_VERT, WARP_TRAIL_FRAG } from './shaders.js?v=3.3';
+import { galaxyGroup, camera } from './engine.js?v=3.3';
+import { app } from './app.js?v=3.3';
+import { mulberry32 } from './utils.js?v=3.3';
 
 export function buildGalaxyView(galaxy, state) {
   // Clear previous

@@ -1,4 +1,4 @@
-export const VERSION = '3.2';
+export const VERSION = '3.3';
 
 export const CONFIG = {
   galaxy: {
@@ -96,7 +96,7 @@ export const CONFIG = {
     orbitSpeed: [0.3, 0.8],
   },
   asteroidBelt: {
-    chance: 0.50,
+    chance: 0.15,
     rockCount: 500,
     rockScaleMin: 0.5,
     rockScaleMax: 2.0,
