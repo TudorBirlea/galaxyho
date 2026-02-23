@@ -49,7 +49,7 @@ export const CONFIG = {
                  atmosCol: [0.20,0.40,0.85], atmosStr: 0.35,
                  scatter: { shell: 1.18, scaleH: 0.30, coeff: [4,9,25], density: 1.2, strength: 8.0 } },
   },
-  bloom: { strength: 1.0, radius: 0.45, threshold: 0.35 },
+  bloom: { strength: 0.85, radius: 0.8, threshold: 0.35 },
   transition: { enterDuration: 1.5, exitDuration: 1.0, fadePoint: 0.55 },
   camera: {
     galaxy: { pos: [0, 70, 100], target: [0, 0, 0], fov: 60, near: 1, far: 2000, minDist: 40, maxDist: 200 },
