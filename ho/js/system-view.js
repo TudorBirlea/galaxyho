@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js?v=3.4';
+import { CONFIG } from './config.js?v=3.5';
 import { STAR_VERT, STAR_FRAG, PLANET_VERT, PLANET_FRAG, RING_VERT, RING_FRAG,
-         ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG } from './shaders.js?v=3.4';
-import { mulberry32 } from './utils.js?v=3.4';
-import { generatePlanets, generateAsteroidBelt } from './data.js?v=3.4';
-import { systemGroup, camera, renderer } from './engine.js?v=3.4';
-import { app } from './app.js?v=3.4';
+         ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG } from './shaders.js?v=3.5';
+import { mulberry32 } from './utils.js?v=3.5';
+import { generatePlanets, generateAsteroidBelt } from './data.js?v=3.5';
+import { systemGroup, camera, renderer } from './engine.js?v=3.5';
+import { app } from './app.js?v=3.5';
 
 // Texture cache — shared across system visits
 const textureCache = {};
@@ -289,6 +289,30 @@ export function buildSystemView(star) {
     app.asteroidBeltMesh = beltPoints;
   }
 
+  // v3: Planet selection ring indicator
+  const selRingGeo = new THREE.RingGeometry(1, 1.08, 64);
+  const selRingMat = new THREE.ShaderMaterial({
+    vertexShader: `varying vec2 vUv;
+      void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `precision highp float;
+      varying vec2 vUv;
+      uniform float u_time;
+      void main(){
+        float pulse=0.5+0.5*sin(u_time*3.0);
+        float alpha=mix(0.25,0.5,pulse);
+        gl_FragColor=vec4(0.5,0.75,1.0,alpha);
+      }`,
+    uniforms: { u_time: { value: 0 } },
+    transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const selRing = new THREE.Mesh(selRingGeo, selRingMat);
+  selRing.rotation.x = -Math.PI / 2;
+  selRing.visible = false;
+  selRing.renderOrder = 3;
+  systemGroup.add(selRing);
+  app.selectionRing = selRing;
+  app.selectedPlanetId = null;
+
   // System starfield (3D points with parallax)
   const sN = 2000, sPos = new Float32Array(sN * 3), sSz = new Float32Array(sN);
   for (let i = 0; i < sN; i++) {
@@ -317,6 +341,8 @@ export function clearSystemView() {
   app.systemStarMesh = null;
   app.asteroidBeltMesh = null;
   app.neutronBeamGroup = null;
+  app.selectionRing = null;
+  app.selectedPlanetId = null;
 }
 
 const _ivp = new THREE.Matrix4();
@@ -363,6 +389,19 @@ export function updateSystemView(time) {
         const mz = pz + Math.sin(ma) * moon.data.orbitRadius;
         moon.mesh.position.set(mx, 0, mz);
       }
+    }
+  }
+
+  // v3: Update selection ring
+  if (app.selectionRing && app.selectedPlanetId !== null) {
+    const sp = app.systemPlanets.find(p => p.data.id === app.selectedPlanetId);
+    if (sp) {
+      const pos = sp.mesh.position;
+      const scale = sp.data.visualSize * 1.6;
+      app.selectionRing.position.set(pos.x, 0.01, pos.z);
+      app.selectionRing.scale.setScalar(scale);
+      app.selectionRing.material.uniforms.u_time.value = time;
+      app.selectionRing.visible = true;
     }
   }
 

@@ -19,4 +19,6 @@ export const app = {
   warpTrailEntries: [],     // [{points, material}] particle trails in galaxy view
   asteroidBeltMesh: null,   // InstancedMesh for system asteroid belt
   neutronBeamGroup: null,   // Rotating beam cones for neutron stars
+  selectionRing: null,      // Planet selection indicator mesh
+  selectedPlanetId: null,   // Currently selected planet id in system view
 };
