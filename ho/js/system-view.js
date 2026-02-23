@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { STAR_VERT, STAR_FRAG, PLANET_VERT, PLANET_FRAG, RING_VERT, RING_FRAG,
-         ATMOS_VERT, ATMOS_FRAG } from './shaders.js';
+         ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG, COMET_TAIL_VERT, COMET_TAIL_FRAG } from './shaders.js';
 import { mulberry32 } from './utils.js';
-import { generatePlanets } from './data.js';
+import { generatePlanets, generateAsteroidBelt, generateComets } from './data.js';
 import { systemGroup, camera, renderer } from './engine.js';
 import { app } from './app.js';
 
@@ -30,12 +30,51 @@ export function buildSystemView(star) {
   clearSystemView();
   const sc = CONFIG.spectral[star.spectralClass];
 
-  // Central star — fullscreen quad with ray-marched shader
-  const starRadius = 4 * sc.starScale;
-  const starGeo = new THREE.PlaneGeometry(2, 2);
-  app.systemStarMesh = new THREE.Mesh(starGeo, new THREE.ShaderMaterial({
-    vertexShader: STAR_VERT, fragmentShader: STAR_FRAG,
-    uniforms: {
+  // ── v3: Determine star rendering based on remnant type ──
+  let starRadius;
+  let starFragShader = STAR_FRAG;
+  let starUniforms;
+
+  if (star.remnantType === 'blackHole') {
+    const bhCfg = CONFIG.remnants.blackHole;
+    starRadius = 4 * bhCfg.starScale;
+    starFragShader = BLACK_HOLE_FRAG;
+    starUniforms = {
+      u_time: { value: 0 },
+      u_starRadius: { value: starRadius },
+      u_invViewProj: { value: new THREE.Matrix4() },
+    };
+  } else if (star.remnantType === 'neutronStar') {
+    const nsCfg = CONFIG.remnants.neutronStar;
+    starRadius = 4 * nsCfg.starScale;
+    starUniforms = {
+      u_time: { value: 0 },
+      u_starRadius: { value: starRadius },
+      u_highTemp: { value: nsCfg.tempK },
+      u_spotAmount: { value: 0 },
+      u_granuleScale: { value: 2.0 },
+      u_euvMix: { value: 0.88 },
+      u_starColor: { value: new THREE.Vector3(0.5, 0.6, 1.0) },
+      u_invViewProj: { value: new THREE.Matrix4() },
+      u_rotSpeed: { value: 0.5 },
+    };
+  } else if (star.remnantType === 'whiteDwarf') {
+    const wdCfg = CONFIG.remnants.whiteDwarf;
+    starRadius = 4 * wdCfg.starScale;
+    starUniforms = {
+      u_time: { value: 0 },
+      u_starRadius: { value: starRadius },
+      u_highTemp: { value: wdCfg.tempK },
+      u_spotAmount: { value: 0.02 },
+      u_granuleScale: { value: 1.5 },
+      u_euvMix: { value: 0.88 },
+      u_starColor: { value: new THREE.Vector3(0.6, 0.7, 1.0) },
+      u_invViewProj: { value: new THREE.Matrix4() },
+      u_rotSpeed: { value: 0.008 },
+    };
+  } else {
+    starRadius = 4 * sc.starScale;
+    starUniforms = {
       u_time: { value: 0 },
       u_starRadius: { value: starRadius },
       u_highTemp: { value: sc.tempK },
@@ -44,9 +83,15 @@ export function buildSystemView(star) {
       u_euvMix: { value: 0.88 },
       u_starColor: { value: new THREE.Vector3(sc.euvTint[0], sc.euvTint[1], sc.euvTint[2]) },
       u_invViewProj: { value: new THREE.Matrix4() },
-      // v2: configurable rotation speed
       u_rotSpeed: { value: 0.012 },
-    },
+    };
+  }
+
+  // Central star — fullscreen quad with ray-marched shader
+  const starGeo = new THREE.PlaneGeometry(2, 2);
+  app.systemStarMesh = new THREE.Mesh(starGeo, new THREE.ShaderMaterial({
+    vertexShader: STAR_VERT, fragmentShader: starFragShader,
+    uniforms: starUniforms,
     depthWrite: false,
     depthTest: false,
   }));
@@ -61,6 +106,28 @@ export function buildSystemView(star) {
   );
   depthSphere.renderOrder = 0;
   systemGroup.add(depthSphere);
+
+  // v3: Neutron star beams
+  if (star.remnantType === 'neutronStar') {
+    const nsCfg = CONFIG.remnants.neutronStar;
+    const beamLen = nsCfg.beamLength;
+    const beamGeo = new THREE.ConeGeometry(0.3, beamLen, 8, 1, true);
+    const beamMat = new THREE.MeshBasicMaterial({
+      color: 0xaabbff, transparent: true, opacity: 0.3,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const beam1 = new THREE.Mesh(beamGeo, beamMat);
+    beam1.position.set(0, starRadius + beamLen / 2, 0);
+    const beam2 = new THREE.Mesh(beamGeo, beamMat.clone());
+    beam2.position.set(0, -(starRadius + beamLen / 2), 0);
+    beam2.rotation.x = Math.PI;
+    const beamGroup = new THREE.Group();
+    beamGroup.add(beam1);
+    beamGroup.add(beam2);
+    beamGroup.rotation.x = 0.4; // tilt axis
+    systemGroup.add(beamGroup);
+    app.neutronBeamGroup = beamGroup;
+  }
 
   // Planets
   const planets = generatePlanets(star);
@@ -89,8 +156,8 @@ export function buildSystemView(star) {
     let atmosMesh = null;
     const pt = CONFIG.planetTypes[p.type];
     if (pt.scatter && pt.scatter.strength > 0) {
-      const sc = pt.scatter;
-      const atmosR = p.visualSize * sc.shell;
+      const scc = pt.scatter;
+      const atmosR = p.visualSize * scc.shell;
       atmosMesh = new THREE.Mesh(
         new THREE.SphereGeometry(atmosR, 48, 48),
         new THREE.ShaderMaterial({
@@ -101,10 +168,10 @@ export function buildSystemView(star) {
             u_center: { value: new THREE.Vector3() },
             u_planetR: { value: p.visualSize },
             u_atmosR: { value: atmosR },
-            u_scaleH: { value: sc.scaleH },
-            u_scatterCoeff: { value: new THREE.Vector3(sc.coeff[0], sc.coeff[1], sc.coeff[2]) },
-            u_density: { value: sc.density },
-            u_strength: { value: sc.strength },
+            u_scaleH: { value: scc.scaleH },
+            u_scatterCoeff: { value: new THREE.Vector3(scc.coeff[0], scc.coeff[1], scc.coeff[2]) },
+            u_density: { value: scc.density },
+            u_strength: { value: scc.strength },
           },
           transparent: true, side: THREE.BackSide, depthWrite: false, blending: THREE.AdditiveBlending,
         })
@@ -147,7 +214,90 @@ export function buildSystemView(star) {
     oLine.renderOrder = 1;
     systemGroup.add(oLine);
 
-    app.systemPlanets.push({ mesh, ring, data: p, orbitLine: oLine, atmosMesh });
+    // v3: Decorative moons
+    const moonMeshes = [];
+    if (p.moons && p.moons.length > 0) {
+      for (const moon of p.moons) {
+        const moonGeo = new THREE.SphereGeometry(moon.size, 12, 12);
+        const moonMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
+        const moonMesh = new THREE.Mesh(moonGeo, moonMat);
+        moonMesh.renderOrder = 1;
+        systemGroup.add(moonMesh);
+        moonMeshes.push({ mesh: moonMesh, data: moon });
+      }
+    }
+
+    app.systemPlanets.push({ mesh, ring, data: p, orbitLine: oLine, atmosMesh, moonMeshes });
+  }
+
+  // v3: Asteroid belt
+  const beltData = generateAsteroidBelt(star, planets);
+  if (beltData) {
+    const beltCfg = CONFIG.asteroidBelt;
+    const rockGeo = new THREE.OctahedronGeometry(1, 0);
+    const rockMat = new THREE.MeshBasicMaterial({ color: 0x554433 });
+    const count = beltCfg.rockCount;
+    const belt = new THREE.InstancedMesh(rockGeo, rockMat, count);
+    belt.renderOrder = 1;
+
+    const beltRng = mulberry32(beltData.beltSeed);
+    const dummy = new THREE.Object3D();
+    const beltWidth = beltData.beltOuterRadius - beltData.beltInnerRadius;
+
+    for (let i = 0; i < count; i++) {
+      const angle = beltRng() * Math.PI * 2;
+      const r = beltData.beltInnerRadius + beltRng() * beltWidth;
+      const y = (beltRng() - 0.5) * beltCfg.verticalSpread;
+      dummy.position.set(Math.cos(angle) * r, y, Math.sin(angle) * r);
+      const s = beltCfg.rockScaleMin + beltRng() * (beltCfg.rockScaleMax - beltCfg.rockScaleMin);
+      dummy.scale.setScalar(s);
+      dummy.rotation.set(beltRng() * Math.PI, beltRng() * Math.PI, beltRng() * Math.PI);
+      dummy.updateMatrix();
+      belt.setMatrixAt(i, dummy.matrix);
+    }
+    belt.instanceMatrix.needsUpdate = true;
+    systemGroup.add(belt);
+    app.asteroidBeltMesh = belt;
+  }
+
+  // v3: Comets
+  const comets = generateComets(star);
+  for (const c of comets) {
+    const cCfg = CONFIG.comets;
+    // Comet head
+    const headGeo = new THREE.SphereGeometry(cCfg.headSize, 8, 8);
+    const headMat = new THREE.MeshBasicMaterial({ color: 0xccddff });
+    const headMesh = new THREE.Mesh(headGeo, headMat);
+    headMesh.renderOrder = 1;
+    systemGroup.add(headMesh);
+
+    // Comet coma glow
+    const comaGeo = new THREE.SphereGeometry(cCfg.headSize * 3, 8, 8);
+    const comaMat = new THREE.MeshBasicMaterial({
+      color: 0x88bbff, transparent: true, opacity: 0.3,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const comaMesh = new THREE.Mesh(comaGeo, comaMat);
+    comaMesh.renderOrder = 1;
+    systemGroup.add(comaMesh);
+
+    // Comet tail particles
+    const tailCount = cCfg.trailParticles;
+    const tailPos = new Float32Array(tailCount * 3);
+    const tailAlpha = new Float32Array(tailCount);
+    const tailGeo = new THREE.BufferGeometry();
+    tailGeo.setAttribute('position', new THREE.BufferAttribute(tailPos, 3));
+    tailGeo.setAttribute('aAlpha', new THREE.BufferAttribute(tailAlpha, 1));
+    const tailMat = new THREE.ShaderMaterial({
+      vertexShader: COMET_TAIL_VERT, fragmentShader: COMET_TAIL_FRAG,
+      uniforms: { u_color: { value: new THREE.Vector3(0.5, 0.7, 1.0) } },
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    const tailPoints = new THREE.Points(tailGeo, tailMat);
+    tailPoints.renderOrder = 1;
+    systemGroup.add(tailPoints);
+
+    app.cometEntries.push({ headMesh, comaMesh, tailPoints, data: c });
   }
 
   // System starfield (3D points with parallax)
@@ -176,9 +326,13 @@ export function clearSystemView() {
   }
   app.systemPlanets = [];
   app.systemStarMesh = null;
+  app.asteroidBeltMesh = null;
+  app.cometEntries = [];
+  app.neutronBeamGroup = null;
 }
 
 const _ivp = new THREE.Matrix4();
+const _tailDir = new THREE.Vector3();
 
 export function updateSystemView(time) {
   if (app.systemStarMesh) {
@@ -213,6 +367,74 @@ export function updateSystemView(time) {
       worldLd.set(-px, 0, -pz).normalize();
       am.u_lightDir.value.copy(worldLd);
     }
+
+    // v3: Update moons
+    if (p.moonMeshes) {
+      for (const moon of p.moonMeshes) {
+        const ma = moon.data.orbitPhase + time * moon.data.orbitSpeed;
+        const mx = px + Math.cos(ma) * moon.data.orbitRadius;
+        const mz = pz + Math.sin(ma) * moon.data.orbitRadius;
+        moon.mesh.position.set(mx, 0, mz);
+      }
+    }
+  }
+
+  // v3: Rotate asteroid belt
+  if (app.asteroidBeltMesh) {
+    app.asteroidBeltMesh.rotation.y = time * CONFIG.asteroidBelt.orbitSpeedBase;
+  }
+
+  // v3: Update comets
+  const cCfg = CONFIG.comets;
+  for (const ce of app.cometEntries) {
+    const c = ce.data;
+    // Kepler equation: M = E - e*sin(E)
+    const M = c.orbitPhase + time * cCfg.speedMultiplier / Math.pow(c.semiMajorAxis, 1.5);
+    let E = M;
+    for (let k = 0; k < 5; k++) E = M + c.eccentricity * Math.sin(E);
+
+    const cosE = Math.cos(E);
+    const sinE = Math.sin(E);
+    const trueAnomaly = Math.atan2(
+      Math.sqrt(1 - c.eccentricity * c.eccentricity) * sinE,
+      cosE - c.eccentricity
+    );
+    const r = c.semiMajorAxis * (1 - c.eccentricity * cosE);
+
+    const ci = Math.cos(c.orbitInclination), si = Math.sin(c.orbitInclination);
+    const cx = Math.cos(trueAnomaly) * r;
+    const cz = Math.sin(trueAnomaly) * r;
+    const cy = cz * si;
+    const czFinal = cz * ci;
+
+    ce.headMesh.position.set(cx, cy, czFinal);
+    ce.comaMesh.position.set(cx, cy, czFinal);
+
+    // Tail: points away from star (anti-sunward)
+    _tailDir.set(cx, cy, czFinal).normalize();
+    const tailLen = 1.5 + 3.0 / Math.max(r, 1);
+    const tailGeo = ce.tailPoints.geometry;
+    const tailPos = tailGeo.attributes.position.array;
+    const tailAlpha = tailGeo.attributes.aAlpha.array;
+    const tailCount = cCfg.trailParticles;
+
+    for (let i = 0; i < tailCount; i++) {
+      const t = i / tailCount;
+      const spread = t * 0.3;
+      const lateralX = Math.sin(i * 7.3 + c.seed * 0.01) * spread;
+      const lateralY = Math.cos(i * 5.7 + c.seed * 0.02) * spread;
+      tailPos[i * 3]     = cx + _tailDir.x * t * tailLen + lateralX;
+      tailPos[i * 3 + 1] = cy + _tailDir.y * t * tailLen + lateralY;
+      tailPos[i * 3 + 2] = czFinal + _tailDir.z * t * tailLen;
+      tailAlpha[i] = cCfg.tailBrightness * (1 - t);
+    }
+    tailGeo.attributes.position.needsUpdate = true;
+    tailGeo.attributes.aAlpha.needsUpdate = true;
+  }
+
+  // v3: Rotate neutron star beams
+  if (app.neutronBeamGroup) {
+    app.neutronBeamGroup.rotation.z = time * 2.0;
   }
 }
 

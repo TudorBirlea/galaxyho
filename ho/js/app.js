@@ -14,4 +14,10 @@ export const app = {
   nebulaMeshes: [],         // All nebula planes (for billboarding + time updates)
   bgStarLayers: [],         // [{points, drift}] for galaxy BG parallax
   camOrigin: null,          // Camera start position for parallax calc
+  // ── v3 additions ──
+  dustLaneMeshes: [],       // Dark dust lane planes in galaxy view
+  warpTrailEntries: [],     // [{points, material}] particle trails in galaxy view
+  asteroidBeltMesh: null,   // InstancedMesh for system asteroid belt
+  cometEntries: [],         // [{headMesh, comaMesh, tailPoints, data}]
+  neutronBeamGroup: null,   // Rotating beam cones for neutron stars
 };

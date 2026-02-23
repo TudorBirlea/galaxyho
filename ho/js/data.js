@@ -26,6 +26,7 @@ export function generateGalaxy(seed) {
 
     const sc = pickSpectralClass(rng);
     const sid = hashInt(seed, stars.length);
+    const isPulsar = rng() < CONFIG.pulsars.chance;
     stars.push({
       id: stars.length,
       name: genStarName(sid),
@@ -35,6 +36,9 @@ export function generateGalaxy(seed) {
       seed: sid,
       visited: false,
       adjacentIds: [],
+      isPulsar,
+      pulseRate: isPulsar ? (CONFIG.pulsars.pulseSpeedMin + rng() * (CONFIG.pulsars.pulseSpeedMax - CONFIG.pulsars.pulseSpeedMin)) : 0,
+      remnantType: null,
     });
   }
 
@@ -49,6 +53,42 @@ export function generateGalaxy(seed) {
     [stars[0], stars[closestIdx]] = [stars[closestIdx], stars[0]];
     stars[0].id = 0;
     stars[closestIdx].id = closestIdx;
+  }
+
+  // ── v3: Designate stellar remnants ──
+  const remnantRng = mulberry32(seed + 900);
+  const rcfg = CONFIG.remnants;
+  const shuffled = [...Array(stars.length).keys()].sort(() => remnantRng() - 0.5);
+  let di = 0;
+
+  const bhCount = rcfg.blackHoleCount[0] + Math.floor(remnantRng() * (rcfg.blackHoleCount[1] - rcfg.blackHoleCount[0] + 1));
+  let assigned = 0;
+  for (let k = di; k < shuffled.length && assigned < bhCount; k++) {
+    const s = stars[shuffled[k]];
+    if (s.id === 0) continue;
+    s.remnantType = 'blackHole';
+    s.planetCount = Math.max(1, Math.floor(s.planetCount * 0.5));
+    assigned++; di = k + 1;
+  }
+
+  const nsCount = rcfg.neutronStarCount[0] + Math.floor(remnantRng() * (rcfg.neutronStarCount[1] - rcfg.neutronStarCount[0] + 1));
+  assigned = 0;
+  for (let k = di; k < shuffled.length && assigned < nsCount; k++) {
+    const s = stars[shuffled[k]];
+    if (s.id === 0 || s.remnantType) continue;
+    s.remnantType = 'neutronStar';
+    s.isPulsar = true;
+    s.pulseRate = rcfg.neutronStar.pulseSpeed;
+    assigned++; di = k + 1;
+  }
+
+  const wdCount = rcfg.whiteDwarfCount[0] + Math.floor(remnantRng() * (rcfg.whiteDwarfCount[1] - rcfg.whiteDwarfCount[0] + 1));
+  assigned = 0;
+  for (let k = di; k < shuffled.length && assigned < wdCount; k++) {
+    const s = stars[shuffled[k]];
+    if (s.id === 0 || s.remnantType) continue;
+    s.remnantType = 'whiteDwarf';
+    assigned++;
   }
 
   // Build adjacency — each star connects to nearest neighbors within range
@@ -138,6 +178,26 @@ export function generatePlanets(star) {
     const pseed = hashInt(star.seed, i * 7 + 3);
     const texturePath = pt.textures[Math.floor(rng() * pt.textures.length)];
     const spinRate = pt.shader === 3 ? 1.2 + rng() * 0.6 : 0.7 + rng() * 0.6; // gas giants spin faster
+    const visualSize = type === 'gas_giant' ? 0.8 + rng() * 0.5 : (type === 'water' ? 0.55 + rng() * 0.4 : 0.35 + rng() * 0.35);
+
+    // v3: Generate moons for eligible planets
+    const moonCfg = CONFIG.moons;
+    const moonChance = moonCfg.chances[type] || 0;
+    const moonMax = moonCfg.maxMoons[type] || 0;
+    const moons = [];
+    if (rng() < moonChance && moonMax > 0) {
+      const moonCount = 1 + Math.floor(rng() * moonMax);
+      for (let m = 0; m < Math.min(moonCount, moonMax); m++) {
+        moons.push({
+          id: m,
+          orbitRadius: visualSize * (moonCfg.orbitRadiusMin + rng() * (moonCfg.orbitRadiusMax - moonCfg.orbitRadiusMin)),
+          orbitSpeed: moonCfg.orbitSpeed[0] + rng() * (moonCfg.orbitSpeed[1] - moonCfg.orbitSpeed[0]),
+          orbitPhase: rng() * Math.PI * 2,
+          size: moonCfg.sizeRange[0] + rng() * (moonCfg.sizeRange[1] - moonCfg.sizeRange[0]),
+          seed: hashInt(pseed, m * 13 + 7),
+        });
+      }
+    }
 
     planets.push({
       id: i, name: star.name + ' ' + ROMAN[i],
@@ -148,8 +208,50 @@ export function generatePlanets(star) {
       orbitRadius: 4 * CONFIG.spectral[sc].starScale * 3 + 3 + Math.pow(i + 1, 1.35) * (3.5 + rng() * 2.5),
       orbitSpeed: (0.15 + rng() * 0.15) / Math.pow(1 + i, 1.4),
       orbitPhase: rng() * Math.PI * 2,
-      visualSize: type === 'gas_giant' ? 0.8 + rng() * 0.5 : (type === 'water' ? 0.55 + rng() * 0.4 : 0.35 + rng() * 0.35),
+      visualSize,
+      moons,
     });
   }
   return planets;
+}
+
+// v3: Asteroid belt generation
+export function generateAsteroidBelt(star, planets) {
+  const rng = mulberry32(star.seed + 500);
+  if (rng() > CONFIG.asteroidBelt.chance) return null;
+  if (planets.length < 2) return null;
+
+  const sorted = [...planets].sort((a, b) => a.orbitRadius - b.orbitRadius);
+  let bestGap = 0, bestInner = 0, bestOuter = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const gap = sorted[i + 1].orbitRadius - sorted[i].orbitRadius;
+    if (gap > bestGap) {
+      bestGap = gap;
+      bestInner = sorted[i].orbitRadius + gap * 0.2;
+      bestOuter = sorted[i + 1].orbitRadius - gap * 0.2;
+    }
+  }
+  if (bestGap < 3) return null;
+
+  return { beltInnerRadius: bestInner, beltOuterRadius: bestOuter, beltSeed: hashInt(star.seed, 501) };
+}
+
+// v3: Comet generation
+export function generateComets(star) {
+  const rng = mulberry32(star.seed + 600);
+  const cfg = CONFIG.comets;
+  const comets = [];
+  const count = cfg.minPerSystem + Math.floor(rng() * (cfg.maxPerSystem - cfg.minPerSystem + 1));
+  for (let i = 0; i < count; i++) {
+    if (rng() > cfg.chance) continue;
+    comets.push({
+      id: i,
+      semiMajorAxis: cfg.semiMajorMin + rng() * (cfg.semiMajorMax - cfg.semiMajorMin),
+      eccentricity: cfg.eccentricity[0] + rng() * (cfg.eccentricity[1] - cfg.eccentricity[0]),
+      orbitPhase: rng() * Math.PI * 2,
+      orbitInclination: (rng() - 0.5) * 0.4,
+      seed: hashInt(star.seed, 600 + i),
+    });
+  }
+  return comets;
 }

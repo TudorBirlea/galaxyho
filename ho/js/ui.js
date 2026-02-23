@@ -26,7 +26,16 @@ const journalNotice = document.getElementById('journal-notice');
 export function showTooltip(star, screenX, screenY, distance, isShipHere, isVisited) {
   const sc = CONFIG.spectral[star.spectralClass];
   ttName.textContent = star.name;
-  ttClass.textContent = `Class ${star.spectralClass} · ${sc.tempLabel}`;
+  // v3: Show remnant type instead of spectral class
+  if (star.remnantType === 'blackHole') {
+    ttClass.textContent = 'Black Hole';
+  } else if (star.remnantType === 'neutronStar') {
+    ttClass.textContent = 'Neutron Star';
+  } else if (star.remnantType === 'whiteDwarf') {
+    ttClass.textContent = 'White Dwarf';
+  } else {
+    ttClass.textContent = `Class ${star.spectralClass} · ${sc.tempLabel}`;
+  }
   ttPlanets.textContent = `${star.planetCount} planet${star.planetCount !== 1 ? 's' : ''}`;
 
   if (isShipHere) {

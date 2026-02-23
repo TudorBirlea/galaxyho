@@ -1,4 +1,4 @@
-export const VERSION = '2.0';
+export const VERSION = '3.0';
 
 export const CONFIG = {
   galaxy: {
@@ -66,4 +66,61 @@ export const CONFIG = {
   nebulaCount: 6,
   nebulaLayers: 3,
   nebulaLayerSpread: 12,
+  // ── v3 additions ──
+  pulsars: {
+    chance: 0.04,
+    pulseSpeedMin: 2.0,
+    pulseSpeedMax: 8.0,
+  },
+  dustLanes: {
+    count: 4,
+    sizeMin: 40,
+    sizeMax: 80,
+    opacity: 0.25,
+    layers: 2,
+    layerSpread: 5,
+  },
+  warpTrails: {
+    particlesPerTrail: 40,
+    speed: 0.3,
+    size: 1.5,
+    color: [0.2, 0.55, 0.45],
+    opacity: 0.5,
+  },
+  moons: {
+    chances: { gas_giant: 0.8, ocean: 0.2, terran: 0.25, water: 0.15, ice: 0.1, desert: 0.05, lava: 0.0 },
+    maxMoons: { gas_giant: 3, ocean: 1, terran: 2, water: 1, ice: 1, desert: 1, lava: 0 },
+    sizeRange: [0.06, 0.15],
+    orbitRadiusMin: 1.8,
+    orbitRadiusMax: 3.5,
+    orbitSpeed: [0.3, 0.8],
+  },
+  asteroidBelt: {
+    chance: 0.50,
+    rockCount: 200,
+    rockScaleMin: 0.02,
+    rockScaleMax: 0.08,
+    orbitSpeedBase: 0.02,
+    verticalSpread: 0.15,
+  },
+  comets: {
+    minPerSystem: 0,
+    maxPerSystem: 3,
+    chance: 0.6,
+    eccentricity: [0.7, 0.95],
+    semiMajorMin: 15,
+    semiMajorMax: 35,
+    trailParticles: 60,
+    headSize: 0.12,
+    tailBrightness: 0.6,
+    speedMultiplier: 0.08,
+  },
+  remnants: {
+    blackHoleCount: [1, 2],
+    neutronStarCount: [2, 3],
+    whiteDwarfCount: [3, 5],
+    blackHole: { spriteSize: 2.5, color: 0x111122, accretionColor: 0xff6600, starScale: 0.5 },
+    neutronStar: { spriteSize: 1.4, color: 0xaabbff, pulseSpeed: 12.0, beamLength: 6.0, tempK: 100000, starScale: 0.2 },
+    whiteDwarf: { spriteSize: 1.0, color: 0xccddff, tempK: 25000, starScale: 0.3 },
+  },
 };

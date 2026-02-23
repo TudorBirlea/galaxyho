@@ -560,14 +560,24 @@ attribute float aSize;
 attribute float aSeed;
 attribute float aBright;
 attribute float aVisited;
+attribute float aPulseRate;
+attribute float aRemnantType;
 varying vec3 vCol;
 varying float vBright;
 varying float vVisited;
+varying float vPulseRate;
+varying float vRemnantType;
+varying float vTime;
 uniform float u_time;
 void main(){
   vCol=color;
   vVisited=aVisited;
-  vBright=aBright*(0.88+0.12*sin(u_time*(1.5+aSeed*3.0)+aSeed*80.0));
+  vPulseRate=aPulseRate;
+  vRemnantType=aRemnantType;
+  vTime=u_time;
+  float baseBright=aBright*(0.88+0.12*sin(u_time*(1.5+aSeed*3.0)+aSeed*80.0));
+  float pulseMod=aPulseRate>0.0 ? 0.3+0.7*abs(sin(u_time*aPulseRate)) : 1.0;
+  vBright=baseBright*pulseMod;
   vec4 mv=modelViewMatrix*vec4(position,1.0);
   gl_PointSize=clamp(aSize*(1200.0/-mv.z),1.0,128.0);
   gl_Position=projectionMatrix*mv;
@@ -578,9 +588,31 @@ precision highp float;
 varying vec3 vCol;
 varying float vBright;
 varying float vVisited;
+varying float vPulseRate;
+varying float vRemnantType;
+varying float vTime;
 void main(){
   vec2 uv=gl_PointCoord-0.5;
   float d=length(uv);
+
+  // v3: Black hole — dark center with accretion ring
+  if(vRemnantType>0.5 && vRemnantType<1.5){
+    float darkCore=1.0-smoothstep(0.06,0.10,d);
+    float accRing=smoothstep(0.08,0.13,d)*smoothstep(0.24,0.16,d);
+    float outerHalo=exp(-d*4.0)*0.25;
+    vec3 accColor=vec3(1.0,0.4,0.1);
+    vec3 col=accColor*accRing*2.5*vBright;
+    col*=(1.0-darkCore*0.97);
+    col+=accColor*outerHalo*vBright;
+    float total2=accRing+outerHalo+darkCore*0.3;
+    if(vVisited>0.5){
+      float ring=smoothstep(0.15,0.19,d)*smoothstep(0.32,0.24,d);
+      col+=vec3(0.2,0.8,0.55)*ring*0.9;
+    }
+    if(total2<0.005) discard;
+    gl_FragColor=vec4(col,min(total2,1.0));
+    return;
+  }
 
   float core=exp(-d*d*60.0);
 
@@ -605,6 +637,13 @@ void main(){
   vec3 coreCol=col*(core+spikes);
   col=coreCol+haloCol;
   col*=vBright;
+
+  // v3: Pulsar expanding ring effect
+  if(vPulseRate>0.0){
+    float phase=fract(vTime*vPulseRate*0.15);
+    float ring=smoothstep(phase*0.4-0.02,phase*0.4,d)*smoothstep(phase*0.4+0.04,phase*0.4+0.02,d);
+    col+=vCol*ring*0.4;
+  }
 
   if(vVisited>0.5){
     float ring=smoothstep(0.15,0.19,d)*smoothstep(0.32,0.24,d);
@@ -762,3 +801,179 @@ export const BLOOM_TINT_SHADER = {
     }
   `
 };
+
+// ── v3: Dust lane shader — dark absorbing regions in galaxy view ──
+
+export const DUST_LANE_VERT = `varying vec2 vUv;
+void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`;
+
+export const DUST_LANE_FRAG = `precision highp float;
+varying vec2 vUv;
+uniform float u_time;
+uniform float u_seed;
+uniform float u_opacity;
+${NOISE_GLSL}
+float fbm3(vec3 p){float f=0.,a=.5;for(int i=0;i<3;i++){f+=a*snoise(p);p*=2.1;a*=.48;}return f;}
+void main(){
+  vec2 p=(vUv-0.5)*2.0;
+  float r=length(p);
+  float falloff=1.0-smoothstep(0.2,1.0,r);
+  vec3 nc=vec3(p*1.2+u_seed*10.0,u_time*0.005+u_seed);
+  float n=fbm3(nc)*0.5+0.5;
+  float n2=fbm3(nc*1.8+vec3(33.0))*0.5+0.5;
+  float filament=smoothstep(0.35,0.55,n*n2);
+  float density=filament*falloff*falloff*u_opacity;
+  if(density<0.005) discard;
+  gl_FragColor=vec4(vec3(0.02,0.015,0.01),density);
+}`;
+
+// ── v3: Warp trail shader — flowing particles between visited stars ──
+
+export const WARP_TRAIL_VERT = `
+attribute float aOffset;
+uniform float u_time;
+uniform float u_speed;
+uniform vec3 u_from;
+uniform vec3 u_to;
+varying float vAlpha;
+void main(){
+  float t=fract(u_time*u_speed+aOffset);
+  vec3 pos=mix(u_from,u_to,t);
+  vec3 dir=normalize(u_to-u_from);
+  vec3 perp=normalize(cross(dir,vec3(0.,1.,0.001)));
+  pos+=perp*sin(t*6.2832+aOffset*20.0)*0.3;
+  vAlpha=sin(t*3.14159)*0.7;
+  vec4 mv=modelViewMatrix*vec4(pos,1.0);
+  gl_PointSize=clamp(1.5*(800.0/-mv.z),0.5,6.0);
+  gl_Position=projectionMatrix*mv;
+}`;
+
+export const WARP_TRAIL_FRAG = `precision highp float;
+varying float vAlpha;
+uniform vec3 u_color;
+void main(){
+  float d=length(gl_PointCoord-0.5)*2.0;
+  float alpha=(1.0-smoothstep(0.0,1.0,d))*vAlpha;
+  if(alpha<0.01) discard;
+  gl_FragColor=vec4(u_color*1.5,alpha);
+}`;
+
+// ── v3: Comet tail shader — point sprite particles ──
+
+export const COMET_TAIL_VERT = `
+attribute float aAlpha;
+varying float vAlpha;
+void main(){
+  vAlpha=aAlpha;
+  vec4 mv=modelViewMatrix*vec4(position,1.0);
+  gl_PointSize=clamp(3.0*(-200.0/mv.z),1.0,12.0);
+  gl_Position=projectionMatrix*mv;
+}`;
+
+export const COMET_TAIL_FRAG = `precision highp float;
+varying float vAlpha;
+uniform vec3 u_color;
+void main(){
+  float d=length(gl_PointCoord-0.5)*2.0;
+  float alpha=(1.0-smoothstep(0.0,1.0,d))*vAlpha;
+  if(alpha<0.01) discard;
+  gl_FragColor=vec4(u_color,alpha);
+}`;
+
+// ── v3: Black hole system view shader — gravitational lensing + accretion disk ──
+
+export const BLACK_HOLE_FRAG = `precision highp float;
+varying vec2 vUV;
+uniform float u_time;
+uniform float u_starRadius;
+uniform mat4 u_invViewProj;
+${NOISE_GLSL}
+
+vec3 ACESFilm(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.,1.);}
+
+float raySphere(vec3 ro,vec3 rd,float radius){
+  float b=dot(ro,rd);float c=dot(ro,ro)-radius*radius;
+  float disc=b*b-c;if(disc<0.)return -1.;return -b-sqrt(disc);
+}
+
+void main(){
+  vec4 farClip=u_invViewProj*vec4(vUV,1.,1.);
+  farClip/=farClip.w;
+  vec3 rd=normalize(farClip.xyz-cameraPosition);
+  vec3 ro=cameraPosition/u_starRadius;
+
+  vec3 col=vec3(0.);
+  float bc=dot(ro,rd);
+  float closestDist=length(ro+rd*max(-bc,0.));
+  float edgeDist=max(0.,closestDist-1.);
+
+  float hit=raySphere(ro,rd,1.0);
+  if(hit>0.){
+    gl_FragColor=vec4(0.,0.,0.,1.);
+    return;
+  }
+
+  // Gravitational lensing — warp background ray direction
+  float deflection=0.4/max(edgeDist,0.05);
+  deflection=min(deflection,3.0);
+  vec3 toCenter=normalize(-ro-rd*max(-bc,0.));
+  vec3 warpedRd=normalize(rd+toCenter*deflection*0.1);
+
+  // Background starfield with warped ray
+  vec3 dN=normalize(warpedRd);
+  float theta=acos(clamp(dN.y,-1.,1.));
+  float phi=atan(dN.z,dN.x);
+  for(int layer=0;layer<3;layer++){
+    float fl=float(layer);
+    float density=120.+fl*80.;
+    vec2 grid=vec2(phi*density,theta*density);
+    vec2 cellId=floor(grid);
+    vec2 cellUV=fract(grid)-0.5;
+    float h=fract(sin(dot(cellId+fl*50.,vec2(127.1,311.7)))*43758.5453);
+    float threshold=0.96+fl*0.015;
+    if(h>threshold){
+      vec2 starOff=vec2(
+        fract(sin(dot(cellId+fl*50.,vec2(269.5,183.3)))*43758.5453),
+        fract(sin(dot(cellId+fl*50.,vec2(419.2,371.9)))*43758.5453)
+      )-0.5;
+      float dist=length(cellUV-starOff*0.6);
+      float brightness=(h-threshold)/(1.-threshold);
+      float twinkle=0.7+0.3*sin(u_time*(1.+h*3.)+h*100.);
+      float point=exp(-dist*dist*800.)*brightness*twinkle;
+      vec3 sCol=mix(vec3(0.6,0.7,1.),vec3(1.,0.85,0.7),fract(h*7.));
+      col+=sCol*point*(1.-fl*0.3)*0.5;
+    }
+  }
+
+  // Accretion disk — ray-plane intersection at y=0
+  float diskR=2.8, diskInner=1.3;
+  if(abs(rd.y)>0.001){
+    float tDisk=-ro.y/rd.y;
+    if(tDisk>0.){
+      vec3 diskHit=ro+rd*tDisk;
+      float diskDist=length(vec2(diskHit.x,diskHit.z));
+      if(diskDist>diskInner && diskDist<diskR){
+        float diskFrac=(diskDist-diskInner)/(diskR-diskInner);
+        float diskBright=(1.-diskFrac)*exp(-diskFrac*2.);
+        float spiral=snoise(vec3(atan(diskHit.z,diskHit.x)*2.,diskDist*3.,u_time*0.1));
+        diskBright*=0.7+0.3*spiral;
+        vec3 diskCol=mix(vec3(1.,0.5,0.1),vec3(0.3,0.6,1.),diskFrac);
+        col+=diskCol*diskBright*1.5;
+      }
+    }
+  }
+
+  // Photon ring — bright ring at event horizon
+  float photonRing=exp(-edgeDist*15.)*0.8;
+  col+=vec3(1.,0.7,0.3)*photonRing;
+
+  // Dim glow
+  float outerGlow=exp(-edgeDist*1.5)*0.04;
+  col+=vec3(0.6,0.3,0.1)*outerGlow;
+
+  col=ACESFilm(col*0.9);
+  float vig=1.-0.15*dot(vUV*0.5,vUV*0.5);
+  col*=vig;
+  col=pow(col,vec3(0.92));
+  gl_FragColor=vec4(col,1.);
+}`;

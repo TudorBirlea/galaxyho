@@ -3,9 +3,9 @@
 ## What Is This
 A 3D space exploration game built with Three.js. The player discovers a procedurally generated galaxy cluster by cluster, zooming into star systems and inspecting individual planets. Pure exploration — no economy, combat, or turns.
 
-## Current Version: v2.0 "Atmosphere"
-- **Galaxy View**: ~200 stars with parallax background starfield (3 layers), volumetric nebulae (5 layers per cloud, billboarded), bloom tint pass preserving spectral colors
-- **System View**: Ray-marched atmospheric scattering on planets, planet shadow on rings, configurable star surface rotation
+## Current Version: v3.0 "Exploration"
+- **Galaxy View**: ~100 stars with parallax background starfield (3 layers), volumetric nebulae (3 layers per cloud, billboarded), bloom tint pass preserving spectral colors, dark dust lanes (FBM noise, NormalBlending), pulsating variable stars (~4%), stellar remnants (black holes, neutron stars, white dwarfs), particle stream warp trails on visited connections
+- **System View**: Ray-marched atmospheric scattering on planets, planet shadow on rings, configurable star surface rotation, decorative moons orbiting planets, asteroid belts (InstancedMesh, 200 rocks), comets with elliptical Keplerian orbits and anti-sunward particle tails, black hole gravitational lensing shader, neutron star rotating beam cones, white dwarf rendering
 - **Post-processing**: Film grain overlay, vignette, bloom tint (galaxy view), UnrealBloomPass
 - **Planet Info Cards**: Slide-up panel with type, size, habitability, metals, atmosphere, specials
 - **Progressive Unlock**: Visit 3 stars in a cluster → adjacent clusters unlock
@@ -67,6 +67,14 @@ _extras/               — Reference files, backups, experiments (gitignored)
 - Nebulae: 5-layer volumetric planes per cloud (10 clouds, 50 total meshes), billboarded via lookAt each frame
 - Star surface: configurable rotation speed via u_rotSpeed uniform
 - Orbital speeds: Keplerian drop-off (inner planets visibly faster than outer)
+- Moons: small SphereGeometry + MeshBasicMaterial, orbit parent planet position each frame
+- Asteroid belts: InstancedMesh (OctahedronGeometry, 200 instances, 1 draw call), placed in largest orbital gap, slow whole-belt rotation
+- Comets: elliptical Keplerian orbits (5-iteration Newton solver), anti-sunward particle tails (Points + per-particle alpha), coma glow (AdditiveBlending sphere)
+- Pulsars/variable stars: aPulseRate attribute on galaxy Points, vertex shader brightness modulation, fragment shader expanding ring effect
+- Dust lanes: PlaneGeometry + FBM noise shader with NormalBlending (dark, absorptive), 4 regions × 2 layers
+- Warp trails: Points geometry per visited connection, positions computed in vertex shader via mix(from,to,fract(time*speed+offset)), sinusoidal lateral drift
+- Stellar remnants: black holes (dedicated BLACK_HOLE_FRAG with gravitational lensing, accretion disk, photon ring), neutron stars (STAR_FRAG with extreme params + rotating ConeGeometry beams), white dwarfs (STAR_FRAG with small radius + high temp)
+- Remnant galaxy rendering: aRemnantType attribute on galaxy Points, black holes rendered with dark center + orange accretion ring in fragment shader
 - Font: SF Mono / Fira Code / Consolas monospace (sci-fi terminal aesthetic)
 
 ## Spectral Classes & Temperatures
@@ -99,3 +107,4 @@ terran, desert, ice, gas_giant, lava, ocean, water — hybrid texture-mapped wit
 - **v1.2**: Planet rendering upgrade — hybrid texture+procedural approach, 7th planet type (water), per-planet atmosphere colors, per-type specular models, night-side lava glow, monospace font, 16 equirectangular textures
 - **v1.3**: Star shader overhaul — fullscreen quad ray-marching (ported from experiment-stars.html), invisible depth sphere for planet occlusion, bloom disabled in system view, Keplerian orbital speeds, overall brightness pass, lava world night-side fix, git repo + GitHub Pages deploy
 - **v2.0**: Visual overhaul — 7 new effects integrated: ray-marched atmospheric scattering (per-planet, Rayleigh), film grain + vignette post-processing, volumetric multi-layer nebulae with billboarding, planet shadow on rings (ray-sphere), 3-layer parallax background starfield, configurable star surface rotation, bloom tint pass for spectral color preservation; version indicator in HUD
+- **v3.0**: Exploration expansion — 7 new features: pulsating variable stars (~4%, shader-driven brightness + expanding ring), dark dust lanes (FBM noise absorption planes), particle stream warp trails (replace solid tubes on visited connections), decorative moons (per-planet-type chance, orbit parents), asteroid belts (InstancedMesh in largest orbital gap, 200 rocks), comets (Keplerian elliptical orbits, anti-sunward particle tails), stellar remnants (1-2 black holes with gravitational lensing shader + accretion disk, 2-3 neutron stars with rotating beam cones, 3-5 white dwarfs); remnant-aware tooltips

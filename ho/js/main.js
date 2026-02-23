@@ -282,6 +282,15 @@ function animate() {
       mesh.lookAt(camera.position);
     }
 
+    // v3: Update dust lane time
+    for (const mesh of app.dustLaneMeshes) {
+      mesh.material.uniforms.u_time.value = t;
+    }
+    // v3: Update warp trail time
+    for (const trail of app.warpTrailEntries) {
+      trail.material.uniforms.u_time.value = t;
+    }
+
     // v2: Update background star parallax
     if (app.camOrigin && app.bgStarLayers.length > 0) {
       const dx = camera.position.x - app.camOrigin.x;
