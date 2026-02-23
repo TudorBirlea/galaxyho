@@ -858,28 +858,6 @@ void main(){
   gl_FragColor=vec4(u_color*1.5,alpha);
 }`;
 
-// ── v3: Comet tail shader — point sprite particles ──
-
-export const COMET_TAIL_VERT = `
-attribute float aAlpha;
-varying float vAlpha;
-void main(){
-  vAlpha=aAlpha;
-  vec4 mv=modelViewMatrix*vec4(position,1.0);
-  gl_PointSize=clamp(3.0*(-200.0/mv.z),1.0,12.0);
-  gl_Position=projectionMatrix*mv;
-}`;
-
-export const COMET_TAIL_FRAG = `precision highp float;
-varying float vAlpha;
-uniform vec3 u_color;
-void main(){
-  float d=length(gl_PointCoord-0.5)*2.0;
-  float alpha=(1.0-smoothstep(0.0,1.0,d))*vAlpha;
-  if(alpha<0.01) discard;
-  gl_FragColor=vec4(u_color,alpha);
-}`;
-
 // ── v3: Black hole system view shader — gravitational lensing + accretion disk ──
 
 export const BLACK_HOLE_FRAG = `precision highp float;

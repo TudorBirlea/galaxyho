@@ -236,22 +236,3 @@ export function generateAsteroidBelt(star, planets) {
   return { beltInnerRadius: bestInner, beltOuterRadius: bestOuter, beltSeed: hashInt(star.seed, 501) };
 }
 
-// v3: Comet generation
-export function generateComets(star) {
-  const rng = mulberry32(star.seed + 600);
-  const cfg = CONFIG.comets;
-  const comets = [];
-  const count = cfg.minPerSystem + Math.floor(rng() * (cfg.maxPerSystem - cfg.minPerSystem + 1));
-  for (let i = 0; i < count; i++) {
-    if (rng() > cfg.chance) continue;
-    comets.push({
-      id: i,
-      semiMajorAxis: cfg.semiMajorMin + rng() * (cfg.semiMajorMax - cfg.semiMajorMin),
-      eccentricity: cfg.eccentricity[0] + rng() * (cfg.eccentricity[1] - cfg.eccentricity[0]),
-      orbitPhase: rng() * Math.PI * 2,
-      orbitInclination: (rng() - 0.5) * 0.4,
-      seed: hashInt(star.seed, 600 + i),
-    });
-  }
-  return comets;
-}

@@ -18,6 +18,5 @@ export const app = {
   dustLaneMeshes: [],       // Dark dust lane planes in galaxy view
   warpTrailEntries: [],     // [{points, material}] particle trails in galaxy view
   asteroidBeltMesh: null,   // InstancedMesh for system asteroid belt
-  cometEntries: [],         // [{headMesh, comaMesh, tailPoints, data}]
   neutronBeamGroup: null,   // Rotating beam cones for neutron stars
 };

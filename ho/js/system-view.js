@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { STAR_VERT, STAR_FRAG, PLANET_VERT, PLANET_FRAG, RING_VERT, RING_FRAG,
-         ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG, COMET_TAIL_VERT, COMET_TAIL_FRAG } from './shaders.js';
+         ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG } from './shaders.js';
 import { mulberry32 } from './utils.js';
-import { generatePlanets, generateAsteroidBelt, generateComets } from './data.js';
+import { generatePlanets, generateAsteroidBelt } from './data.js';
 import { systemGroup, camera, renderer } from './engine.js';
 import { app } from './app.js';
 
@@ -230,74 +230,64 @@ export function buildSystemView(star) {
     app.systemPlanets.push({ mesh, ring, data: p, orbitLine: oLine, atmosMesh, moonMeshes });
   }
 
-  // v3: Asteroid belt
+  // v3: Asteroid belt — Points geometry for visibility
   const beltData = generateAsteroidBelt(star, planets);
   if (beltData) {
     const beltCfg = CONFIG.asteroidBelt;
-    const rockGeo = new THREE.OctahedronGeometry(1, 0);
-    const rockMat = new THREE.MeshBasicMaterial({ color: 0x554433 });
     const count = beltCfg.rockCount;
-    const belt = new THREE.InstancedMesh(rockGeo, rockMat, count);
-    belt.renderOrder = 1;
-
     const beltRng = mulberry32(beltData.beltSeed);
-    const dummy = new THREE.Object3D();
     const beltWidth = beltData.beltOuterRadius - beltData.beltInnerRadius;
+
+    const bPos = new Float32Array(count * 3);
+    const bSizes = new Float32Array(count);
+    const bColors = new Float32Array(count * 3);
 
     for (let i = 0; i < count; i++) {
       const angle = beltRng() * Math.PI * 2;
       const r = beltData.beltInnerRadius + beltRng() * beltWidth;
       const y = (beltRng() - 0.5) * beltCfg.verticalSpread;
-      dummy.position.set(Math.cos(angle) * r, y, Math.sin(angle) * r);
-      const s = beltCfg.rockScaleMin + beltRng() * (beltCfg.rockScaleMax - beltCfg.rockScaleMin);
-      dummy.scale.setScalar(s);
-      dummy.rotation.set(beltRng() * Math.PI, beltRng() * Math.PI, beltRng() * Math.PI);
-      dummy.updateMatrix();
-      belt.setMatrixAt(i, dummy.matrix);
+      bPos[i * 3]     = Math.cos(angle) * r;
+      bPos[i * 3 + 1] = y;
+      bPos[i * 3 + 2] = Math.sin(angle) * r;
+      bSizes[i] = beltCfg.rockScaleMin + beltRng() * (beltCfg.rockScaleMax - beltCfg.rockScaleMin);
+      // Slight color variation (brownish-gray)
+      const v = 0.35 + beltRng() * 0.25;
+      bColors[i * 3]     = v * 1.1;
+      bColors[i * 3 + 1] = v * 0.95;
+      bColors[i * 3 + 2] = v * 0.8;
     }
-    belt.instanceMatrix.needsUpdate = true;
-    systemGroup.add(belt);
-    app.asteroidBeltMesh = belt;
-  }
 
-  // v3: Comets
-  const comets = generateComets(star);
-  for (const c of comets) {
-    const cCfg = CONFIG.comets;
-    // Comet head
-    const headGeo = new THREE.SphereGeometry(cCfg.headSize, 8, 8);
-    const headMat = new THREE.MeshBasicMaterial({ color: 0xccddff });
-    const headMesh = new THREE.Mesh(headGeo, headMat);
-    headMesh.renderOrder = 1;
-    systemGroup.add(headMesh);
+    const beltGeo = new THREE.BufferGeometry();
+    beltGeo.setAttribute('position', new THREE.BufferAttribute(bPos, 3));
+    beltGeo.setAttribute('size', new THREE.BufferAttribute(bSizes, 1));
+    beltGeo.setAttribute('color', new THREE.BufferAttribute(bColors, 3));
 
-    // Comet coma glow
-    const comaGeo = new THREE.SphereGeometry(cCfg.headSize * 3, 8, 8);
-    const comaMat = new THREE.MeshBasicMaterial({
-      color: 0x88bbff, transparent: true, opacity: 0.3,
-      blending: THREE.AdditiveBlending, depthWrite: false,
+    const beltMat = new THREE.ShaderMaterial({
+      vertexShader: `
+        attribute float size;
+        varying vec3 vC;
+        void main(){
+          vC = color;
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = size * (300.0 / -mv.z);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        varying vec3 vC;
+        void main(){
+          float d = length(gl_PointCoord - 0.5) * 2.0;
+          if(d > 1.0) discard;
+          // Rough rocky look: slightly irregular edge
+          float alpha = (1.0 - smoothstep(0.6, 1.0, d)) * 0.9;
+          gl_FragColor = vec4(vC, alpha);
+        }`,
+      transparent: true, vertexColors: true, depthWrite: false,
     });
-    const comaMesh = new THREE.Mesh(comaGeo, comaMat);
-    comaMesh.renderOrder = 1;
-    systemGroup.add(comaMesh);
 
-    // Comet tail particles
-    const tailCount = cCfg.trailParticles;
-    const tailPos = new Float32Array(tailCount * 3);
-    const tailAlpha = new Float32Array(tailCount);
-    const tailGeo = new THREE.BufferGeometry();
-    tailGeo.setAttribute('position', new THREE.BufferAttribute(tailPos, 3));
-    tailGeo.setAttribute('aAlpha', new THREE.BufferAttribute(tailAlpha, 1));
-    const tailMat = new THREE.ShaderMaterial({
-      vertexShader: COMET_TAIL_VERT, fragmentShader: COMET_TAIL_FRAG,
-      uniforms: { u_color: { value: new THREE.Vector3(0.5, 0.7, 1.0) } },
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    });
-    const tailPoints = new THREE.Points(tailGeo, tailMat);
-    tailPoints.renderOrder = 1;
-    systemGroup.add(tailPoints);
-
-    app.cometEntries.push({ headMesh, comaMesh, tailPoints, data: c });
+    const beltPoints = new THREE.Points(beltGeo, beltMat);
+    beltPoints.renderOrder = 1;
+    systemGroup.add(beltPoints);
+    app.asteroidBeltMesh = beltPoints;
   }
 
   // System starfield (3D points with parallax)
@@ -327,12 +317,10 @@ export function clearSystemView() {
   app.systemPlanets = [];
   app.systemStarMesh = null;
   app.asteroidBeltMesh = null;
-  app.cometEntries = [];
   app.neutronBeamGroup = null;
 }
 
 const _ivp = new THREE.Matrix4();
-const _tailDir = new THREE.Vector3();
 
 export function updateSystemView(time) {
   if (app.systemStarMesh) {
@@ -382,54 +370,6 @@ export function updateSystemView(time) {
   // v3: Rotate asteroid belt
   if (app.asteroidBeltMesh) {
     app.asteroidBeltMesh.rotation.y = time * CONFIG.asteroidBelt.orbitSpeedBase;
-  }
-
-  // v3: Update comets
-  const cCfg = CONFIG.comets;
-  for (const ce of app.cometEntries) {
-    const c = ce.data;
-    // Kepler equation: M = E - e*sin(E)
-    const M = c.orbitPhase + time * cCfg.speedMultiplier / Math.pow(c.semiMajorAxis, 1.5);
-    let E = M;
-    for (let k = 0; k < 5; k++) E = M + c.eccentricity * Math.sin(E);
-
-    const cosE = Math.cos(E);
-    const sinE = Math.sin(E);
-    const trueAnomaly = Math.atan2(
-      Math.sqrt(1 - c.eccentricity * c.eccentricity) * sinE,
-      cosE - c.eccentricity
-    );
-    const r = c.semiMajorAxis * (1 - c.eccentricity * cosE);
-
-    const ci = Math.cos(c.orbitInclination), si = Math.sin(c.orbitInclination);
-    const cx = Math.cos(trueAnomaly) * r;
-    const cz = Math.sin(trueAnomaly) * r;
-    const cy = cz * si;
-    const czFinal = cz * ci;
-
-    ce.headMesh.position.set(cx, cy, czFinal);
-    ce.comaMesh.position.set(cx, cy, czFinal);
-
-    // Tail: points away from star (anti-sunward)
-    _tailDir.set(cx, cy, czFinal).normalize();
-    const tailLen = 1.5 + 3.0 / Math.max(r, 1);
-    const tailGeo = ce.tailPoints.geometry;
-    const tailPos = tailGeo.attributes.position.array;
-    const tailAlpha = tailGeo.attributes.aAlpha.array;
-    const tailCount = cCfg.trailParticles;
-
-    for (let i = 0; i < tailCount; i++) {
-      const t = i / tailCount;
-      const spread = t * 0.3;
-      const lateralX = Math.sin(i * 7.3 + c.seed * 0.01) * spread;
-      const lateralY = Math.cos(i * 5.7 + c.seed * 0.02) * spread;
-      tailPos[i * 3]     = cx + _tailDir.x * t * tailLen + lateralX;
-      tailPos[i * 3 + 1] = cy + _tailDir.y * t * tailLen + lateralY;
-      tailPos[i * 3 + 2] = czFinal + _tailDir.z * t * tailLen;
-      tailAlpha[i] = cCfg.tailBrightness * (1 - t);
-    }
-    tailGeo.attributes.position.needsUpdate = true;
-    tailGeo.attributes.aAlpha.needsUpdate = true;
   }
 
   // v3: Rotate neutron star beams
