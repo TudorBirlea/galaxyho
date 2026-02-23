@@ -3,19 +3,21 @@
 ## What Is This
 A 3D space exploration game built with Three.js. The player discovers a procedurally generated galaxy cluster by cluster, zooming into star systems and inspecting individual planets. Pure exploration — no economy, combat, or turns.
 
-## Current Version: v1 "Explorer"
-- **Galaxy View**: ~200 stars across 10 clusters, glowing sprites color-coded by spectral class
-- **System View**: Central star with animated procedural surface, 3-7 orbiting planets with per-type shaders
+## Current Version: v2.0 "Atmosphere"
+- **Galaxy View**: ~200 stars with parallax background starfield (3 layers), volumetric nebulae (5 layers per cloud, billboarded), bloom tint pass preserving spectral colors
+- **System View**: Ray-marched atmospheric scattering on planets, planet shadow on rings, configurable star surface rotation
+- **Post-processing**: Film grain overlay, vignette, bloom tint (galaxy view), UnrealBloomPass
 - **Planet Info Cards**: Slide-up panel with type, size, habitability, metals, atmosphere, specials
 - **Progressive Unlock**: Visit 3 stars in a cluster → adjacent clusters unlock
 - **Persistence**: LocalStorage saves visited stars and unlocked clusters
 - **Touch-first**: Drag to orbit, pinch to zoom, tap to select, double-tap to enter
+- **Version**: Displayed in HUD (top-right), set via `VERSION` constant in config.js
 
 ## Tech Stack
 - Three.js r160 (CDN ESM imports)
 - Custom GLSL shaders: simplex noise, FBM, domain warping
 - Seeded procedural generation (mulberry32 PRNG)
-- Post-processing: EffectComposer + UnrealBloomPass
+- Post-processing: EffectComposer → UnrealBloomPass → BloomTintPass → FilmGrainPass
 - Modular ES module codebase (js/ directory)
 
 ## File Structure
@@ -54,10 +56,16 @@ _extras/               — Reference files, backups, experiments (gitignored)
   - Overlays: procedural clouds, lava veins, cracks, dust haze (per-type)
   - Lighting: per-planet atmosphere colors + per-type specular
   - Lava worlds: luminance-based magma/crust separation for proper night-side glow
-- Rings: RingGeometry + ShaderMaterial (band patterns, Cassini gaps)
+- Rings: RingGeometry + ShaderMaterial (band patterns, Cassini gaps, planet shadow via ray-sphere intersection)
+- Atmosphere: Ray-marched Rayleigh scattering (12 steps, BackSide sphere shell, per-type scatter config)
 - Single THREE.Scene with galaxyGroup/systemGroup toggled via `.visible`
 - View transitions: CSS overlay fade (0.4s black → swap groups → fade out)
 - Bloom: enabled in galaxy view (threshold 0.35), disabled in system view (star shader handles its own glow)
+- Bloom tint pass: re-saturates bloom areas to preserve spectral star colors (galaxy view only)
+- Film grain: hash-based animated noise + smoothstep vignette (ShaderPass, always active)
+- Galaxy background: 3-layer starfield with parallax drift based on camera displacement
+- Nebulae: 5-layer volumetric planes per cloud (10 clouds, 50 total meshes), billboarded via lookAt each frame
+- Star surface: configurable rotation speed via u_rotSpeed uniform
 - Orbital speeds: Keplerian drop-off (inner planets visibly faster than outer)
 - Font: SF Mono / Fira Code / Consolas monospace (sci-fi terminal aesthetic)
 
@@ -90,3 +98,4 @@ terran, desert, ice, gas_giant, lava, ocean, water — hybrid texture-mapped wit
 - **v1.1**: Upgraded star shader to ray-marched blackbody with EUV-inspired colors; upgraded planet shader to dedicated per-type surface functions (from star.html / planets.html references)
 - **v1.2**: Planet rendering upgrade — hybrid texture+procedural approach, 7th planet type (water), per-planet atmosphere colors, per-type specular models, night-side lava glow, monospace font, 16 equirectangular textures
 - **v1.3**: Star shader overhaul — fullscreen quad ray-marching (ported from experiment-stars.html), invisible depth sphere for planet occlusion, bloom disabled in system view, Keplerian orbital speeds, overall brightness pass, lava world night-side fix, git repo + GitHub Pages deploy
+- **v2.0**: Visual overhaul — 7 new effects integrated: ray-marched atmospheric scattering (per-planet, Rayleigh), film grain + vignette post-processing, volumetric multi-layer nebulae with billboarding, planet shadow on rings (ray-sphere), 3-layer parallax background starfield, configurable star surface rotation, bloom tint pass for spectral color preservation; version indicator in HUD

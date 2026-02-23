@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js';
+import { CONFIG, VERSION } from './config.js';
 import { app } from './app.js';
 
 const tooltipEl = document.getElementById('tooltip');
@@ -82,12 +82,15 @@ export function showInfoCard(planet, snapshot) {
 
 export function hideInfoCard() { infoCard.classList.remove('visible'); }
 
+const hudVersion = document.getElementById('hud-version');
+
 export function updateHUD(galaxy, state) {
   hudProgress.textContent = `${state.visitedStars.size}/${galaxy.stars.length} explored`;
   const shipStar = galaxy.stars[state.shipStarId];
   if (shipStar) {
     hudShip.textContent = `Docked at ${shipStar.name}`;
   }
+  if (hudVersion) hudVersion.textContent = `v${VERSION}`;
 }
 
 export function showLockMessage() {
