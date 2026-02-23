@@ -121,32 +121,52 @@ void main(){
     vec3 surfCoord=vec3(c2*normal.x+s2*normal.z,normal.y,-s2*normal.x+c2*normal.z);
     float gScale=5.*u_granuleScale;
 
-    float cell=voronoi3D(surfCoord*gScale*0.6);
-    float cellPattern=1.-smoothstep(0.,0.22,cell);
-    float detail=(starFbm(surfCoord,gScale,3)+1.)*0.5;
-    float granuleNoise=cellPattern*0.7+detail*0.3;
+    // Convection cells (voronoi) — two scales for depth
+    float cell1=voronoi3D(surfCoord*gScale*0.6);
+    float cell2=voronoi3D(surfCoord*gScale*1.2+vec3(7.7));
+    float cellEdge1=1.-smoothstep(0.,0.18,cell1);
+    float cellEdge2=1.-smoothstep(0.,0.12,cell2);
+    float cellInterior=smoothstep(0.08,0.30,cell1);
+    // Bright cell centers, dark edges
+    float granule=cellInterior*0.7+cellEdge1*0.15+cellEdge2*0.08;
 
-    float spotNoise=snoise(surfCoord*gScale*0.15+vec3(slowTime*0.1,0.,slowTime*0.05));
-    float sunspots=max(0.,spotNoise*3.2-2.1)*u_spotAmount;
+    // Fine turbulent detail
+    float detail=starFbm(surfCoord,gScale*1.5,4)*0.5+0.5;
+    float microDetail=snoise(surfCoord*gScale*4.)*0.5+0.5;
+    granule=granule*0.65+detail*0.25+microDetail*0.10;
 
-    float brightNoise=snoise(surfCoord*gScale*0.08+vec3(0.,slowTime*0.15,0.));
-    float brightSpot=max(0.,brightNoise*1.8-1.);
+    // Sunspots — dark magnetic regions
+    float spotNoise1=snoise(surfCoord*gScale*0.12+vec3(slowTime*0.08,0.,slowTime*0.04));
+    float spotNoise2=snoise(surfCoord*gScale*0.25+vec3(slowTime*0.05,slowTime*0.03,0.));
+    float spotCore=max(0.,spotNoise1*3.5-2.2)*u_spotAmount;
+    float spotPenumbra=max(0.,spotNoise1*2.5-1.4)*u_spotAmount*0.4;
+    float sunspots=spotCore+spotPenumbra+max(0.,spotNoise2*2.0-1.5)*u_spotAmount*0.2;
 
-    float total=clamp(granuleNoise-sunspots+brightSpot,0.,1.5);
-    total=pow(total,1.15);
+    // Bright faculae — hot regions near spots and at limb
+    float facNoise=snoise(surfCoord*gScale*0.18+vec3(0.,slowTime*0.12,slowTime*0.06));
+    float faculae=max(0.,facNoise*2.0-0.8)*0.35;
+
+    float total=clamp(granule-sunspots+faculae,0.,1.5);
+    total=pow(total,1.1);
     float highTemp=u_highTemp;
-    float lowTemp=highTemp*0.35;
+    float lowTemp=highTemp*0.30;
     float pixelTemp=mix(lowTemp,highTemp,total);
     vec3 starCol=tempToColor(pixelTemp);
 
+    // Limb darkening — physically motivated (stronger at edges)
     float NdotV=max(dot(normal,normalize(ro-hitPos)),0.);
-    float limb=pow(NdotV,0.5);
-    float limbTemp=mix(lowTemp*1.2,pixelTemp,pow(NdotV,0.55));
+    float limb=0.3+0.7*pow(NdotV,0.45);
+    // Limb reddening — edge is cooler
+    float limbTemp=mix(lowTemp*1.5,pixelTemp,pow(NdotV,0.50));
     vec3 limbCol=tempToColor(limbTemp);
-    starCol=mix(limbCol,starCol,pow(NdotV,0.35));
+    starCol=mix(limbCol,starCol,pow(NdotV,0.40));
     starCol*=limb;
 
-    float brightnessBoost=0.8+clamp((highTemp-4000.)/20000.,0.,1.)*0.3;
+    // Facular brightening near the limb (where faculae are more visible)
+    float limbFac=faculae*(1.-pow(NdotV,0.6))*0.3;
+    starCol*=(1.+limbFac);
+
+    float brightnessBoost=0.75+clamp((highTemp-4000.)/25000.,0.,1.)*0.25;
     starCol*=brightnessBoost;
 
     starCol=colorGrade(starCol,u_starColor,u_euvMix);
