@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { renderer, camera } from './engine.js?v=3.3';
-import { app } from './app.js?v=3.3';
+import { renderer, camera } from './engine.js?v=3.4';
+import { app } from './app.js?v=3.4';
 import { showTooltip, hideTooltip, showInfoCard, hideInfoCard, showLockMessage,
          hudLocation, ttEnter, ttJump, backBtn, icClose, journalBtn, journalClose,
-         toggleJournal, renderJournal } from './ui.js?v=3.3';
-import { starDistance } from './data.js?v=3.3';
-import { drawMinimap } from './minimap.js?v=3.3';
-import { capturePlanetSnapshot } from './system-view.js?v=3.3';
+         toggleJournal, renderJournal } from './ui.js?v=3.4';
+import { starDistance } from './data.js?v=3.4';
+import { drawMinimap } from './minimap.js?v=3.4';
+import { capturePlanetSnapshot } from './system-view.js?v=3.4';
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();

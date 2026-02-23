@@ -821,10 +821,10 @@ void main(){
   vec3 nc=vec3(p*1.2+u_seed*10.0,u_time*0.005+u_seed);
   float n=fbm3(nc)*0.5+0.5;
   float n2=fbm3(nc*1.8+vec3(33.0))*0.5+0.5;
-  float filament=smoothstep(0.35,0.55,n*n2);
-  float density=filament*falloff*falloff*u_opacity;
-  if(density<0.005) discard;
-  gl_FragColor=vec4(vec3(0.02,0.015,0.01),density);
+  float filament=smoothstep(0.2,0.5,n*n2);
+  float density=filament*falloff*u_opacity;
+  if(density<0.003) discard;
+  gl_FragColor=vec4(vec3(0.01,0.008,0.005),density);
 }`;
 
 // ── v3: Warp trail shader — flowing particles between visited stars ──
@@ -841,10 +841,10 @@ void main(){
   vec3 pos=mix(u_from,u_to,t);
   vec3 dir=normalize(u_to-u_from);
   vec3 perp=normalize(cross(dir,vec3(0.,1.,0.001)));
-  pos+=perp*sin(t*6.2832+aOffset*20.0)*0.3;
-  vAlpha=sin(t*3.14159)*0.7;
+  pos+=perp*sin(t*6.2832+aOffset*20.0)*0.08;
+  vAlpha=sin(t*3.14159)*0.25;
   vec4 mv=modelViewMatrix*vec4(pos,1.0);
-  gl_PointSize=clamp(1.5*(800.0/-mv.z),0.5,6.0);
+  gl_PointSize=clamp(1.0*(600.0/-mv.z),0.5,3.0);
   gl_Position=projectionMatrix*mv;
 }`;
 
@@ -855,7 +855,7 @@ void main(){
   float d=length(gl_PointCoord-0.5)*2.0;
   float alpha=(1.0-smoothstep(0.0,1.0,d))*vAlpha;
   if(alpha<0.01) discard;
-  gl_FragColor=vec4(u_color*1.5,alpha);
+  gl_FragColor=vec4(u_color,alpha);
 }`;
 
 // ── v3: Black hole system view shader — gravitational lensing + accretion disk ──

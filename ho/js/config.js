@@ -1,4 +1,4 @@
-export const VERSION = '3.3';
+export const VERSION = '3.4';
 
 export const CONFIG = {
   galaxy: {
@@ -73,10 +73,10 @@ export const CONFIG = {
     pulseSpeedMax: 8.0,
   },
   dustLanes: {
-    count: 4,
-    sizeMin: 40,
-    sizeMax: 80,
-    opacity: 0.25,
+    count: 5,
+    sizeMin: 50,
+    sizeMax: 100,
+    opacity: 0.55,
     layers: 2,
     layerSpread: 5,
   },

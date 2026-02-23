@@ -1,5 +1,5 @@
-import { CONFIG, VERSION } from './config.js?v=3.3';
-import { app } from './app.js?v=3.3';
+import { CONFIG, VERSION } from './config.js?v=3.4';
+import { app } from './app.js?v=3.4';
 
 const tooltipEl = document.getElementById('tooltip');
 const ttName = document.getElementById('tt-name');
