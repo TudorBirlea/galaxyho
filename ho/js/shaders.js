@@ -881,7 +881,7 @@ void initDiskBasis(float tilt){
 
 // Disk color + density at a given disk-space radius and angle
 vec4 evalDisk(float r, float angle, vec3 rd){
-  float diskInner=1.3;
+  float diskInner=1.5;
   float diskOuter=6.0;
   if(r<diskInner||r>diskOuter) return vec4(0.);
 
@@ -917,23 +917,6 @@ vec4 evalDisk(float r, float angle, vec3 rd){
   else col=mix(col,vec3(1.0,0.2,0.05),-shift*0.25);
 
   return vec4(col*density,density);
-}
-
-// Explicit ray-disk plane intersection for lensed secondary image
-vec3 sampleDiskExplicit(vec3 ro, vec3 rd, float weight, inout float accumAlpha){
-  float denom=dot(rd,diskNormal);
-  if(abs(denom)<0.0001) return vec3(0.);
-  float t=-dot(ro,diskNormal)/denom;
-  if(t<0.) return vec3(0.);
-  vec3 hitW=ro+rd*t;
-  vec3 hitD=diskBasis*hitW;
-  float r=length(hitD.xz);
-  float angle=atan(hitD.z,hitD.x);
-  vec4 d=evalDisk(r,angle,rd);
-  if(d.a<0.001) return vec3(0.);
-  float alpha=min(d.a*weight,1.0-accumAlpha);
-  accumAlpha+=alpha;
-  return d.rgb*alpha;
 }
 
 // Background starfield with given ray direction
@@ -976,44 +959,56 @@ void main(){
 
   // ── Geodesic ray march ──
   vec3 pos=ro;
-  vec3 vel=rd;
-  float dt=0.3;
+  vec3 vel=rd; // |vel|=1 initially, varies during integration
+
+  // h² = |L|² is a conserved quantity (angular momentum squared)
+  // Compute once — central force preserves it exactly
+  float h2=dot(cross(pos,vel),cross(pos,vel));
+
   vec3 col=vec3(0.);
   float diskAccum=0.;
   bool hitHorizon=false;
   float closestR=100.;
   float prevDiskY=dot(pos,diskNormal);
 
-  for(int i=0;i<80;i++){
+  for(int i=0;i<120;i++){
     float r=length(pos);
     closestR=min(closestR,r);
 
-    if(r<1.02){ hitHorizon=true; break; }
-    if(r>30.&&i>5) break;
+    if(r<1.0){ hitHorizon=true; break; }
+    if(r>50.&&i>3) break;
 
-    // Gravitational deflection
-    vec3 rhat=pos/r;
-    float accel=1.5/(r*r);
-    vel-=rhat*accel*dt;
-    vel=normalize(vel);
+    // Adaptive step: small near horizon, capped by |vel| so we don't overshoot
+    float speed=length(vel);
+    float dt=clamp((r-1.0)*0.3,0.015,0.5)/max(speed,0.5);
 
-    // Adaptive step size
-    dt=max(0.04,min(0.4,(r-1.0)*0.25));
-    vec3 newPos=pos+vel*dt;
+    // Velocity Verlet (symplectic — conserves h² much better than Euler)
+    float r5=r*r*r*r*r;
+    vec3 a1=-1.5*h2*pos/r5;
 
-    // Disk-plane crossing detection — exact intersection sampling
+    vec3 newPos=pos+vel*dt+0.5*a1*dt*dt;
+    float nr=length(newPos);
+
+    // Horizon check on new position
+    if(nr<1.0){ hitHorizon=true; break; }
+
+    float nr5=nr*nr*nr*nr*nr;
+    vec3 a2=-1.5*h2*newPos/max(nr5,0.001);
+    vel+=0.5*(a1+a2)*dt;
+
+    // Disk-plane crossing detection
     float curDiskY=dot(newPos,diskNormal);
-    if(prevDiskY*curDiskY<0.0 && diskAccum<0.95){
+    if(prevDiskY*curDiskY<0.0&&diskAccum<0.95){
       float frac=prevDiskY/(prevDiskY-curDiskY);
       vec3 crossPt=mix(pos,newPos,frac);
       float crossR=length(crossPt);
-      if(crossR>1.2){
+      if(crossR>1.5){
         vec3 crossD=diskBasis*crossPt;
         float cr=length(crossD.xz);
         float cangle=atan(crossD.z,crossD.x);
-        vec4 d=evalDisk(cr,cangle,vel);
+        vec4 d=evalDisk(cr,cangle,normalize(vel));
         if(d.a>0.001){
-          float alpha=min(d.a*0.9,1.0-diskAccum);
+          float alpha=min(d.a*0.8,1.0-diskAccum);
           col+=d.rgb*alpha;
           diskAccum+=alpha;
         }
@@ -1024,27 +1019,16 @@ void main(){
     pos=newPos;
   }
 
-  // Secondary lensed image — far side of disk bent over/under the hole
-  if(!hitHorizon && diskAccum<0.9){
-    col+=sampleDiskExplicit(pos,vel,0.7,diskAccum);
+  // Shadow: captured rays → pure black
+  if(hitHorizon){
+    col=vec3(0.);
+    diskAccum=0.;
   }
 
-  // Background stars (using final warped ray direction)
+  // Background stars (final warped ray direction)
   if(!hitHorizon){
-    col+=bgStars(vel)*(1.-diskAccum);
+    col+=bgStars(normalize(vel))*(1.-diskAccum);
   }
-
-  // Photon ring at photon sphere (~1.5 rs) + horizon edge ring
-  float photonDist=abs(closestR-1.5);
-  float photonRing=exp(-photonDist*25.)*1.5;
-  float horizonRing=exp(-abs(closestR-1.05)*50.)*0.8;
-  vec3 ringCol=vec3(1.,0.75,0.35);
-  col+=ringCol*(photonRing+horizonRing)*(1.-float(hitHorizon)*0.5);
-
-  // Subtle outer glow
-  float edgeDist=max(closestR-1.,0.);
-  float outerGlow=exp(-edgeDist*2.)*0.03;
-  col+=vec3(0.5,0.25,0.1)*outerGlow;
 
   col=ACESFilm(col*0.9);
   float vig=1.-0.12*dot(vUV*0.5,vUV*0.5);
