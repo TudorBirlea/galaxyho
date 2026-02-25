@@ -21,4 +21,6 @@ export const app = {
   neutronBeamGroup: null,   // Rotating beam cones for neutron stars
   selectionRing: null,      // Planet selection indicator mesh
   selectedPlanetId: null,   // Currently selected planet id in system view
+  starGlowSprite: null,     // Star glow billboard sprite
+  starfieldMat: null,       // System starfield ShaderMaterial (for brightness tuning)
 };

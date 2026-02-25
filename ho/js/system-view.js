@@ -133,6 +133,7 @@ export function buildSystemView(star) {
     }));
     glowSprite.scale.setScalar(starRadius * 7);
     systemGroup.add(glowSprite);
+    app.starGlowSprite = glowSprite;
   }
 
   // v3: Neutron star beams
@@ -346,16 +347,22 @@ export function buildSystemView(star) {
   for (let i = 0; i < sN; i++) {
     const r = 60 + Math.random() * 300, th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
     sPos[i*3] = r*Math.sin(ph)*Math.cos(th); sPos[i*3+1] = r*Math.sin(ph)*Math.sin(th); sPos[i*3+2] = r*Math.cos(ph);
-    sSz[i] = 1.0 + Math.random() * 2.5;
+    sSz[i] = 0.5 + Math.random() * 1.5;
   }
   const sGeo = new THREE.BufferGeometry();
   sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
   sGeo.setAttribute('size', new THREE.BufferAttribute(sSz, 1));
-  systemGroup.add(new THREE.Points(sGeo, new THREE.ShaderMaterial({
-    vertexShader: `attribute float size;void main(){vec4 mv=modelViewMatrix*vec4(position,1);gl_PointSize=size*(150./-mv.z);gl_Position=projectionMatrix*mv;}`,
-    fragmentShader: `void main(){float d=length(gl_PointCoord-.5)*2.;gl_FragColor=vec4(vec3(.8,.85,.9),(1.-smoothstep(0.,1.,d))*1.2);}`,
+  const sfMat = new THREE.ShaderMaterial({
+    vertexShader: `attribute float size;
+      uniform float u_boost;
+      void main(){vec4 mv=modelViewMatrix*vec4(position,1);gl_PointSize=size*u_boost*(150./-mv.z);gl_Position=projectionMatrix*mv;}`,
+    fragmentShader: `uniform float u_boost;
+      void main(){float d=length(gl_PointCoord-.5)*2.;gl_FragColor=vec4(vec3(.8,.85,.9),(1.-smoothstep(0.,1.,d))*0.5*u_boost);}`,
+    uniforms: { u_boost: { value: 2.5 } },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
-  })));
+  });
+  systemGroup.add(new THREE.Points(sGeo, sfMat));
+  app.starfieldMat = sfMat;
 }
 
 export function clearSystemView() {
@@ -371,6 +378,8 @@ export function clearSystemView() {
   app.neutronBeamGroup = null;
   app.selectionRing = null;
   app.selectedPlanetId = null;
+  app.starGlowSprite = null;
+  app.starfieldMat = null;
 }
 
 const _ivp = new THREE.Matrix4();

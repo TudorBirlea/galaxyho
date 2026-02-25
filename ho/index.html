@@ -120,6 +120,14 @@ canvas{display:block}
   background:rgba(10,12,20,0.75);border:1px solid rgba(255,255,255,0.06);border-radius:10px;
   color:rgba(255,255,255,0.3);font-size:11px;z-index:25;display:none;
   backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);white-space:nowrap;letter-spacing:0.5px}
+#tune-panel{position:fixed;bottom:20px;right:20px;padding:12px 16px;
+  background:rgba(10,12,20,0.8);border:1px solid rgba(255,255,255,0.08);border-radius:8px;
+  z-index:20;display:none;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);min-width:200px}
+.tune-title{font-size:9px;color:rgba(255,255,255,0.25);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
+.tune-row{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.tune-row label{font-size:10px;color:rgba(255,255,255,0.35);min-width:72px;letter-spacing:0.5px}
+.tune-row input[type=range]{width:80px;accent-color:rgba(100,200,150,0.5);height:2px}
+.tune-row span{font-size:10px;color:rgba(255,200,150,0.6);min-width:28px;text-align:right}
 </style>
 </head>
 <body>
@@ -173,6 +181,13 @@ canvas{display:block}
 
 <div id="minimap-wrap">
   <canvas id="minimap" width="300" height="300"></canvas>
+</div>
+
+<div id="tune-panel">
+  <div class="tune-title">Tuning</div>
+  <div class="tune-row"><label>Glow Size</label><input type="range" id="tune-glow-size" min="1" max="15" step="0.5" value="7"><span id="tune-glow-size-val">7</span></div>
+  <div class="tune-row"><label>Glow Opacity</label><input type="range" id="tune-glow-int" min="0" max="1" step="0.05" value="0.7"><span id="tune-glow-int-val">0.7</span></div>
+  <div class="tune-row"><label>Stars Boost</label><input type="range" id="tune-stars" min="0.5" max="5" step="0.25" value="2.5"><span id="tune-stars-val">2.5</span></div>
 </div>
 
 <div id="overlay"></div>

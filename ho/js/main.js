@@ -178,6 +178,7 @@ function exitSystem() {
     controls.update();
 
     backBtn.style.display = 'none';
+    document.getElementById('tune-panel').style.display = 'none';
     hudLocation.textContent = 'Galaxy View';
     saveState(app.state);
     drawMinimap(app.galaxy, app.state, app.selectedStar);
@@ -241,6 +242,7 @@ function animate() {
         controls.update();
 
         backBtn.style.display = 'block';
+        document.getElementById('tune-panel').style.display = 'block';
         hudLocation.textContent = transAnim.star.name;
         updateHUD(app.galaxy, app.state);
         drawMinimap(app.galaxy, app.state, app.selectedStar);
@@ -304,5 +306,27 @@ function animate() {
 
   composer.render();
 }
+
+// ── Tuning panel controls ──
+function setupTuneSlider(id, valId, onChange) {
+  const inp = document.getElementById(id);
+  const val = document.getElementById(valId);
+  inp.addEventListener('input', () => {
+    val.textContent = inp.value;
+    onChange(parseFloat(inp.value));
+  });
+}
+setupTuneSlider('tune-glow-size', 'tune-glow-size-val', v => {
+  if (app.starGlowSprite) {
+    const sr = app.systemStarMesh ? app.systemStarMesh.material.uniforms.u_starRadius.value : 4;
+    app.starGlowSprite.scale.setScalar(sr * v);
+  }
+});
+setupTuneSlider('tune-glow-int', 'tune-glow-int-val', v => {
+  if (app.starGlowSprite) app.starGlowSprite.material.opacity = v;
+});
+setupTuneSlider('tune-stars', 'tune-stars-val', v => {
+  if (app.starfieldMat) app.starfieldMat.uniforms.u_boost.value = v;
+});
 
 init();
