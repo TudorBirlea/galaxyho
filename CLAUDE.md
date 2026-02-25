@@ -60,6 +60,8 @@ _extras/               — Reference files, backups, experiments (gitignored)
 - Atmosphere: Ray-marched Rayleigh scattering (12 steps, BackSide sphere shell, per-type scatter config)
 - Single THREE.Scene with galaxyGroup/systemGroup toggled via `.visible`
 - View transitions: CSS overlay fade (0.4s black → swap groups → fade out)
+- Star glow: additive Sprite billboard per star (canvas radial gradient, spectral-colored, depthTest off, scale ~7× starRadius), skipped for black holes
+- System starfield: 2000 Points in sphere (r 60–360), boosted sizes (1.0–3.5) and alpha (1.2×) for visibility
 - Bloom: enabled in galaxy view (threshold 0.35), disabled in system view (star shader handles its own glow)
 - Bloom tint pass: re-saturates bloom areas to preserve spectral star colors (galaxy view only)
 - Film grain: hash-based animated noise + smoothstep vignette (ShaderPass, always active)
@@ -109,3 +111,4 @@ terran, desert, ice, gas_giant, lava, ocean, water — hybrid texture-mapped wit
 - **v2.0**: Visual overhaul — 7 new effects integrated: ray-marched atmospheric scattering (per-planet, Rayleigh), film grain + vignette post-processing, volumetric multi-layer nebulae with billboarding, planet shadow on rings (ray-sphere), 3-layer parallax background starfield, configurable star surface rotation, bloom tint pass for spectral color preservation; version indicator in HUD
 - **v3.0**: Exploration expansion — 7 new features: pulsating variable stars (~4%, shader-driven brightness + expanding ring), dark dust lanes (FBM noise absorption planes), particle stream warp trails (replace solid tubes on visited connections), decorative moons (per-planet-type chance, orbit parents), asteroid belts (InstancedMesh in largest orbital gap, 200 rocks), comets (Keplerian elliptical orbits, anti-sunward particle tails), stellar remnants (1-2 black holes with gravitational lensing shader + accretion disk, 2-3 neutron stars with rotating beam cones, 3-5 white dwarfs); remnant-aware tooltips
 - **v3.7.1**: Black hole shader rewrite — correct Schwarzschild geodesic ray tracing with conserved angular momentum (h²), Velocity Verlet symplectic integration (replaces broken Euler + normalize), proper event horizon shadow, disk inner edge at photon sphere (1.5 rs), removed fake photon ring and straight-line secondary image hack
+- **v3.7.2**: System view brightness — star glow sprite (additive billboard, spectral-colored, canvas radial gradient), boosted background starfield (larger points, higher alpha)

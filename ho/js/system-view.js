@@ -108,6 +108,33 @@ export function buildSystemView(star) {
   depthSphere.renderOrder = 0;
   systemGroup.add(depthSphere);
 
+  // Star glow sprite — additive billboard for ambient scene fill
+  if (star.remnantType !== 'blackHole') {
+    const glowCanvas = document.createElement('canvas');
+    glowCanvas.width = 256; glowCanvas.height = 256;
+    const gCtx = glowCanvas.getContext('2d');
+    const grad = gCtx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    grad.addColorStop(0, 'rgba(255,230,180,1.0)');
+    grad.addColorStop(0.08, 'rgba(255,210,150,0.7)');
+    grad.addColorStop(0.25, 'rgba(255,180,100,0.25)');
+    grad.addColorStop(0.5, 'rgba(255,150,60,0.08)');
+    grad.addColorStop(0.8, 'rgba(255,120,40,0.02)');
+    grad.addColorStop(1, 'rgba(255,100,30,0)');
+    gCtx.fillStyle = grad;
+    gCtx.fillRect(0, 0, 256, 256);
+    const glowTex = new THREE.CanvasTexture(glowCanvas);
+    const glowColor = star.remnantType
+      ? new THREE.Color(0.6, 0.7, 1.0) // neutron/white dwarf: blue-white
+      : new THREE.Color(sc.euvTint[0], sc.euvTint[1], sc.euvTint[2]);
+    const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex, color: glowColor,
+      transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending,
+      depthWrite: false, depthTest: false,
+    }));
+    glowSprite.scale.setScalar(starRadius * 7);
+    systemGroup.add(glowSprite);
+  }
+
   // v3: Neutron star beams
   if (star.remnantType === 'neutronStar') {
     const nsCfg = CONFIG.remnants.neutronStar;
@@ -314,19 +341,19 @@ export function buildSystemView(star) {
   app.selectionRing = selRing;
   app.selectedPlanetId = null;
 
-  // System starfield (3D points with parallax)
+  // System starfield (3D points with parallax) — boosted brightness
   const sN = 2000, sPos = new Float32Array(sN * 3), sSz = new Float32Array(sN);
   for (let i = 0; i < sN; i++) {
     const r = 60 + Math.random() * 300, th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
     sPos[i*3] = r*Math.sin(ph)*Math.cos(th); sPos[i*3+1] = r*Math.sin(ph)*Math.sin(th); sPos[i*3+2] = r*Math.cos(ph);
-    sSz[i] = 0.5 + Math.random() * 1.5;
+    sSz[i] = 1.0 + Math.random() * 2.5;
   }
   const sGeo = new THREE.BufferGeometry();
   sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
   sGeo.setAttribute('size', new THREE.BufferAttribute(sSz, 1));
   systemGroup.add(new THREE.Points(sGeo, new THREE.ShaderMaterial({
     vertexShader: `attribute float size;void main(){vec4 mv=modelViewMatrix*vec4(position,1);gl_PointSize=size*(150./-mv.z);gl_Position=projectionMatrix*mv;}`,
-    fragmentShader: `void main(){float d=length(gl_PointCoord-.5)*2.;gl_FragColor=vec4(vec3(.8,.85,.9),(1.-smoothstep(0.,1.,d))*.5);}`,
+    fragmentShader: `void main(){float d=length(gl_PointCoord-.5)*2.;gl_FragColor=vec4(vec3(.8,.85,.9),(1.-smoothstep(0.,1.,d))*1.2);}`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
   })));
 }
