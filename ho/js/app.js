@@ -17,7 +17,11 @@ export const app = {
   // ── v3 additions ──
   dustLaneMeshes: [],       // Dark dust lane planes in galaxy view
   warpTrailEntries: [],     // [{points, material}] particle trails in galaxy view
-  asteroidBeltMesh: null,   // InstancedMesh for system asteroid belt
+  asteroidBeltMesh: null,   // Points geometry for system asteroid belt
+  asteroidDustMesh: null,   // Ring mesh for belt dust glow layer
+  asteroidRocks: [],        // Large rock meshes orbiting in belt
+  asteroidBursts: [],       // Collision burst particle pool
+  asteroidNextBurst: 0,     // Time of next collision burst spawn
   neutronBeamGroup: null,   // Rotating beam cones for neutron stars
   selectionRing: null,      // Planet selection indicator mesh
   selectedPlanetId: null,   // Currently selected planet id in system view

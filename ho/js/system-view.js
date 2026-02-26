@@ -267,63 +267,245 @@ export function buildSystemView(star) {
     app.systemPlanets.push({ mesh, ring, data: p, orbitLine: oLine, atmosMesh, moonMeshes });
   }
 
-  // v3: Asteroid belt — Points geometry for visibility
+  // v4: Enhanced asteroid belt — Keplerian orbits, irregular shapes, composition colors,
+  // phase-angle lighting, Gaussian vertical distribution, dust layer, large rocks, collision bursts
   const beltData = generateAsteroidBelt(star, planets);
   if (beltData) {
     const beltCfg = CONFIG.asteroidBelt;
     const count = beltCfg.rockCount;
     const beltRng = mulberry32(beltData.beltSeed);
-    const beltWidth = beltData.beltOuterRadius - beltData.beltInnerRadius;
+    const bInner = beltData.beltInnerRadius;
+    const bOuter = beltData.beltOuterRadius;
+    const beltWidth = bOuter - bInner;
 
-    const bPos = new Float32Array(count * 3);
-    const bSizes = new Float32Array(count);
-    const bColors = new Float32Array(count * 3);
+    // Per-particle attributes
+    const aRadius = new Float32Array(count);
+    const aAngle = new Float32Array(count);
+    const aY = new Float32Array(count);
+    const aSize = new Float32Array(count);
+    const aSeed = new Float32Array(count);
+    const aCompType = new Float32Array(count);
+
+    // Dummy position for Three.js bounding (real positions computed in vertex shader)
+    const dummyPos = new Float32Array(count * 3);
 
     for (let i = 0; i < count; i++) {
-      const angle = beltRng() * Math.PI * 2;
-      const r = beltData.beltInnerRadius + beltRng() * beltWidth;
-      const y = (beltRng() - 0.5) * beltCfg.verticalSpread;
-      bPos[i * 3]     = Math.cos(angle) * r;
-      bPos[i * 3 + 1] = y;
-      bPos[i * 3 + 2] = Math.sin(angle) * r;
-      bSizes[i] = beltCfg.rockScaleMin + beltRng() * (beltCfg.rockScaleMax - beltCfg.rockScaleMin);
-      // Slight color variation (brownish-gray)
-      const v = 0.35 + beltRng() * 0.25;
-      bColors[i * 3]     = v * 1.1;
-      bColors[i * 3 + 1] = v * 0.95;
-      bColors[i * 3 + 2] = v * 0.8;
+      aRadius[i] = bInner + beltRng() * beltWidth;
+      aAngle[i] = beltRng() * Math.PI * 2;
+      // Gaussian vertical (CLT: avg of 3 randoms)
+      aY[i] = ((beltRng() + beltRng() + beltRng()) / 3 - 0.5) * beltCfg.verticalSpread;
+      aSize[i] = beltCfg.rockScaleMin + beltRng() * (beltCfg.rockScaleMax - beltCfg.rockScaleMin);
+      aSeed[i] = beltRng();
+      // Composition: 60% silicate, 25% carbonaceous, 15% metallic
+      const ct = beltRng();
+      aCompType[i] = ct < 0.60 ? 0.0 : ct < 0.85 ? 1.0 : 2.0;
+
+      dummyPos[i * 3]     = Math.cos(aAngle[i]) * aRadius[i];
+      dummyPos[i * 3 + 1] = aY[i];
+      dummyPos[i * 3 + 2] = Math.sin(aAngle[i]) * aRadius[i];
     }
 
     const beltGeo = new THREE.BufferGeometry();
-    beltGeo.setAttribute('position', new THREE.BufferAttribute(bPos, 3));
-    beltGeo.setAttribute('size', new THREE.BufferAttribute(bSizes, 1));
-    beltGeo.setAttribute('color', new THREE.BufferAttribute(bColors, 3));
+    beltGeo.setAttribute('position', new THREE.BufferAttribute(dummyPos, 3));
+    beltGeo.setAttribute('aRadius', new THREE.BufferAttribute(aRadius, 1));
+    beltGeo.setAttribute('aAngle', new THREE.BufferAttribute(aAngle, 1));
+    beltGeo.setAttribute('aY', new THREE.BufferAttribute(aY, 1));
+    beltGeo.setAttribute('aSize', new THREE.BufferAttribute(aSize, 1));
+    beltGeo.setAttribute('aSeed', new THREE.BufferAttribute(aSeed, 1));
+    beltGeo.setAttribute('aCompType', new THREE.BufferAttribute(aCompType, 1));
+    beltGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), bOuter + 2);
 
     const beltMat = new THREE.ShaderMaterial({
       vertexShader: `
-        attribute float size;
-        varying vec3 vC;
-        void main(){
-          vC = color;
-          vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize = clamp(size * (150.0 / -mv.z), 1.0, 4.0);
+        attribute float aRadius;
+        attribute float aAngle;
+        attribute float aY;
+        attribute float aSize;
+        attribute float aSeed;
+        attribute float aCompType;
+        uniform float u_time;
+        uniform float u_orbitSpeed;
+        varying vec3 vColor;
+        varying float vSeed;
+        void main() {
+          // Keplerian orbital speed
+          float speed = u_orbitSpeed / sqrt(aRadius);
+          float angle = aAngle + u_time * speed;
+          vec3 worldPos = vec3(cos(angle) * aRadius, aY, sin(angle) * aRadius);
+
+          // Color by composition type
+          float v = 0.35 + aSeed * 0.25;
+          vec3 baseColor;
+          if (aCompType < 0.5) {
+            // Silicate: warm gray-brown
+            baseColor = vec3(v * 1.15, v * 0.90, v * 0.70);
+          } else if (aCompType < 1.5) {
+            // Carbonaceous: dark charcoal
+            float d = 0.18 + aSeed * 0.12;
+            baseColor = vec3(d * 0.95, d * 0.95, d * 1.0);
+          } else {
+            // Metallic: brighter blue-gray
+            float m = 0.45 + aSeed * 0.30;
+            baseColor = vec3(m * 0.90, m * 0.95, m * 1.15);
+          }
+
+          // Phase-angle lighting (star at origin)
+          vec3 toStar = normalize(-worldPos);
+          vec3 toCam = normalize(cameraPosition - worldPos);
+          float phase = dot(toStar, toCam);
+          float lightFactor = 0.25 + 0.75 * clamp(phase * 0.5 + 0.5, 0.0, 1.0);
+          baseColor *= lightFactor;
+
+          vColor = baseColor;
+          vSeed = aSeed;
+          vec4 mv = modelViewMatrix * vec4(worldPos, 1.0);
+          gl_PointSize = clamp(aSize * (180.0 / -mv.z), 1.0, 6.0);
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `
-        varying vec3 vC;
-        void main(){
-          float d = length(gl_PointCoord - 0.5) * 2.0;
-          if(d > 1.0) discard;
-          float alpha = (1.0 - d * d) * 0.7;
-          gl_FragColor = vec4(vC * 0.8, alpha);
+        precision highp float;
+        varying vec3 vColor;
+        varying float vSeed;
+        void main() {
+          vec2 uv = gl_PointCoord - 0.5;
+          float d = length(uv) * 2.0;
+          // Irregular rocky shapes via angular distortion
+          float angle = atan(uv.y, uv.x);
+          float s = vSeed * 100.0;
+          d += 0.10 * sin(angle * 3.0 + s)
+             + 0.07 * sin(angle * 5.0 + s * 2.3)
+             + 0.05 * sin(angle * 7.0 + s * 3.7)
+             + 0.03 * sin(angle * 11.0 + s * 5.1);
+          if (d > 0.9) discard;
+          float alpha = (1.0 - smoothstep(0.5, 0.9, d)) * 0.7;
+          gl_FragColor = vec4(vColor * 0.85, alpha);
         }`,
-      transparent: true, vertexColors: true, depthWrite: false,
+      uniforms: {
+        u_time: { value: 0 },
+        u_orbitSpeed: { value: beltCfg.orbitSpeedBase },
+      },
+      transparent: true, depthWrite: false,
     });
 
     const beltPoints = new THREE.Points(beltGeo, beltMat);
     beltPoints.renderOrder = 1;
+    beltPoints.userData = { beltInner: bInner, beltOuter: bOuter };
     systemGroup.add(beltPoints);
     app.asteroidBeltMesh = beltPoints;
+
+    // ── Dust glow layer ──
+    const dustGeo = new THREE.RingGeometry(bInner - 0.5, bOuter + 0.5, 128, 1);
+    const dustMat = new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec3 vWP;
+        void main() {
+          vWP = (modelMatrix * vec4(position, 1.0)).xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: `
+        precision highp float;
+        varying vec3 vWP;
+        uniform float u_opacity, u_time, u_inner, u_outer;
+        float hash(vec2 p) {
+          p = fract(p * vec2(123.34, 456.21));
+          p += dot(p, p + 45.32);
+          return fract(p.x * p.y);
+        }
+        float noise2d(vec2 p) {
+          vec2 i = floor(p); vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1,0)), f.x),
+                     mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y);
+        }
+        void main() {
+          float r = length(vWP.xz);
+          float mid = (u_inner + u_outer) * 0.5;
+          float hw = (u_outer - u_inner) * 0.5 + 0.5;
+          float radial = 1.0 - smoothstep(0.0, 1.0, abs(r - mid) / hw);
+          radial *= radial;
+          float ang = atan(vWP.z, vWP.x);
+          float n = noise2d(vec2(ang * 3.0, r * 0.5) + u_time * 0.01);
+          float n2 = noise2d(vec2(ang * 7.0 + 10.0, r * 1.5) + u_time * 0.005);
+          float density = radial * (0.5 + 0.3 * n + 0.2 * n2);
+          vec3 dustCol = mix(vec3(0.5, 0.4, 0.3), vec3(0.6, 0.5, 0.35), n);
+          gl_FragColor = vec4(dustCol, density * u_opacity);
+        }`,
+      uniforms: {
+        u_opacity: { value: beltCfg.dustOpacity },
+        u_time: { value: 0 },
+        u_inner: { value: bInner },
+        u_outer: { value: bOuter },
+      },
+      transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    const dustMesh = new THREE.Mesh(dustGeo, dustMat);
+    dustMesh.rotation.x = -Math.PI / 2;
+    dustMesh.renderOrder = 0;
+    systemGroup.add(dustMesh);
+    app.asteroidDustMesh = dustMesh;
+
+    // ── Large named rocks ──
+    for (let i = 0; i < beltCfg.largeRockCount; i++) {
+      const rockRng = mulberry32(beltData.beltSeed + 100 + i * 37);
+      const sz = beltCfg.largeRockSizeMin + rockRng() * (beltCfg.largeRockSizeMax - beltCfg.largeRockSizeMin);
+      const geo = new THREE.IcosahedronGeometry(sz, 1);
+      const posAttr = geo.attributes.position;
+      for (let v = 0; v < posAttr.count; v++) {
+        const scale = 1.0 + (rockRng() - 0.5) * 0.4;
+        posAttr.setXYZ(v, posAttr.getX(v) * scale, posAttr.getY(v) * scale, posAttr.getZ(v) * scale);
+      }
+      geo.computeVertexNormals();
+      const colors = [0x6b5e50, 0x585858, 0x4a3e34, 0x7a7268, 0x5e4a40];
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: colors[i % colors.length] }));
+      const orbitR = bInner + 1 + (beltWidth - 2) * (i / Math.max(beltCfg.largeRockCount - 1, 1));
+      mesh.userData = { orbitR, phase: rockRng() * Math.PI * 2, rotSpeed: 0.5 + rockRng() * 2 };
+      mesh.renderOrder = 1;
+      systemGroup.add(mesh);
+      app.asteroidRocks.push(mesh);
+    }
+
+    // ── Collision burst pool ──
+    const burstMat = new THREE.ShaderMaterial({
+      vertexShader: `
+        attribute float aAlpha;
+        varying float vAlpha;
+        void main() {
+          vAlpha = aAlpha;
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = clamp(2.0 * (100.0 / -mv.z), 0.5, 3.5);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        varying float vAlpha;
+        void main() {
+          float d = length(gl_PointCoord - 0.5) * 2.0;
+          if (d > 1.0) discard;
+          gl_FragColor = vec4(0.8, 0.6, 0.4, (1.0 - d * d) * vAlpha);
+        }`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    const bpc = beltCfg.burstParticleCount;
+    for (let b = 0; b < 8; b++) {
+      const geo = new THREE.BufferGeometry();
+      const pos = new Float32Array(bpc * 3);
+      const alpha = new Float32Array(bpc);
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1));
+      geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), bOuter + 5);
+      const points = new THREE.Points(geo, burstMat);
+      points.visible = false;
+      points.frustumCulled = false;
+      points.renderOrder = 2;
+      systemGroup.add(points);
+      app.asteroidBursts.push({
+        points,
+        initPos: new Float32Array(bpc * 3),
+        vel: new Float32Array(bpc * 3),
+        active: false,
+        spawnTime: 0,
+      });
+    }
+    app.asteroidNextBurst = beltCfg.collisionInterval * (0.5 + Math.random());
   }
 
   // v3: Planet selection ring indicator
@@ -383,6 +565,10 @@ export function clearSystemView() {
   app.systemPlanets = [];
   app.systemStarMesh = null;
   app.asteroidBeltMesh = null;
+  app.asteroidDustMesh = null;
+  app.asteroidRocks = [];
+  app.asteroidBursts = [];
+  app.asteroidNextBurst = 0;
   app.neutronBeamGroup = null;
   app.selectionRing = null;
   app.selectedPlanetId = null;
@@ -450,9 +636,73 @@ export function updateSystemView(time) {
     }
   }
 
-  // v3: Rotate asteroid belt
+  // v4: Update asteroid belt (Keplerian orbits via shader, dust, rocks, collision bursts)
   if (app.asteroidBeltMesh) {
-    app.asteroidBeltMesh.rotation.y = time * CONFIG.asteroidBelt.orbitSpeedBase;
+    app.asteroidBeltMesh.material.uniforms.u_time.value = time;
+  }
+  if (app.asteroidDustMesh) {
+    app.asteroidDustMesh.material.uniforms.u_time.value = time;
+  }
+  for (const rock of app.asteroidRocks) {
+    const { orbitR, phase, rotSpeed } = rock.userData;
+    const speed = CONFIG.asteroidBelt.orbitSpeedBase / Math.sqrt(orbitR);
+    const angle = phase + time * speed;
+    rock.position.set(Math.cos(angle) * orbitR, 0, Math.sin(angle) * orbitR);
+    rock.rotation.x = time * rotSpeed * 0.7;
+    rock.rotation.y = time * rotSpeed;
+  }
+  // Collision bursts
+  if (app.asteroidBursts.length > 0) {
+    const bCfg = CONFIG.asteroidBelt;
+    // Spawn burst occasionally
+    if (time > app.asteroidNextBurst) {
+      const burst = app.asteroidBursts.find(b => !b.active);
+      if (burst && app.asteroidBeltMesh) {
+        const { beltInner, beltOuter } = app.asteroidBeltMesh.userData;
+        const bw = beltOuter - beltInner;
+        const ba = Math.random() * Math.PI * 2;
+        const br = beltInner + Math.random() * bw;
+        const ox = Math.cos(ba) * br, oz = Math.sin(ba) * br;
+        const bpc = bCfg.burstParticleCount;
+        for (let i = 0; i < bpc; i++) {
+          burst.initPos[i*3]     = ox;
+          burst.initPos[i*3 + 1] = (Math.random() - 0.5) * 0.2;
+          burst.initPos[i*3 + 2] = oz;
+          const sp = 0.3 + Math.random() * 0.6;
+          const va = Math.random() * Math.PI * 2;
+          burst.vel[i*3]     = Math.cos(va) * sp;
+          burst.vel[i*3 + 1] = (Math.random() - 0.5) * sp * 0.4;
+          burst.vel[i*3 + 2] = Math.sin(va) * sp;
+        }
+        burst.active = true;
+        burst.spawnTime = time;
+        burst.points.visible = true;
+      }
+      app.asteroidNextBurst = time + bCfg.collisionInterval * (0.5 + Math.random());
+    }
+    // Update active bursts
+    const bpc = bCfg.burstParticleCount;
+    for (const burst of app.asteroidBursts) {
+      if (!burst.active) continue;
+      const age = time - burst.spawnTime;
+      if (age > bCfg.burstLifetime) {
+        burst.active = false;
+        burst.points.visible = false;
+        continue;
+      }
+      const lifeFrac = age / bCfg.burstLifetime;
+      const fadeOut = 1.0 - lifeFrac * lifeFrac;
+      const posArr = burst.points.geometry.attributes.position.array;
+      const alphaArr = burst.points.geometry.attributes.aAlpha.array;
+      for (let i = 0; i < bpc; i++) {
+        posArr[i*3]     = burst.initPos[i*3]     + burst.vel[i*3]     * age;
+        posArr[i*3 + 1] = burst.initPos[i*3 + 1] + burst.vel[i*3 + 1] * age;
+        posArr[i*3 + 2] = burst.initPos[i*3 + 2] + burst.vel[i*3 + 2] * age;
+        alphaArr[i] = fadeOut * 0.7;
+      }
+      burst.points.geometry.attributes.position.needsUpdate = true;
+      burst.points.geometry.attributes.aAlpha.needsUpdate = true;
+    }
   }
 
   // v3: Rotate neutron star beams

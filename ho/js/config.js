@@ -102,6 +102,13 @@ export const CONFIG = {
     rockScaleMax: 2.0,
     orbitSpeedBase: 0.02,
     verticalSpread: 0.4,
+    dustOpacity: 0.12,
+    largeRockCount: 4,
+    largeRockSizeMin: 0.15,
+    largeRockSizeMax: 0.30,
+    collisionInterval: 12,
+    burstParticleCount: 25,
+    burstLifetime: 1.5,
   },
   remnants: {
     blackHoleCount: [1, 2],

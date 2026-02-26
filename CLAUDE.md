@@ -5,7 +5,7 @@ A 3D space exploration game built with Three.js. The player discovers a procedur
 
 ## Current Version: v3.0 "Exploration"
 - **Galaxy View**: ~100 stars with parallax background starfield (3 layers), volumetric nebulae (3 layers per cloud, billboarded), bloom tint pass preserving spectral colors, dark dust lanes (FBM noise, NormalBlending), pulsating variable stars (~4%), stellar remnants (black holes, neutron stars, white dwarfs), particle stream warp trails on visited connections
-- **System View**: Ray-marched atmospheric scattering on planets, planet shadow on rings, configurable star surface rotation, decorative moons orbiting planets, asteroid belts (InstancedMesh, 200 rocks), comets with elliptical Keplerian orbits and anti-sunward particle tails, black hole gravitational lensing shader, neutron star rotating beam cones, white dwarf rendering
+- **System View**: Ray-marched atmospheric scattering on planets, planet shadow on rings, configurable star surface rotation, decorative moons orbiting planets, enhanced asteroid belts (500 Points with Keplerian orbits, irregular rocky shapes, 3 composition types, phase-angle lighting, Gaussian vertical distribution, dust glow layer, large tumbling rocks, rare collision bursts), comets with elliptical Keplerian orbits and anti-sunward particle tails, black hole gravitational lensing shader, neutron star rotating beam cones, white dwarf rendering
 - **Post-processing**: Film grain overlay, vignette, bloom tint (galaxy view), UnrealBloomPass
 - **Planet Info Cards**: Slide-up panel with type, size, habitability, metals, atmosphere, specials
 - **Progressive Unlock**: Visit 3 stars in a cluster → adjacent clusters unlock
@@ -70,7 +70,15 @@ _extras/               — Reference files, backups, experiments (gitignored)
 - Star surface: configurable rotation speed via u_rotSpeed uniform
 - Orbital speeds: Keplerian drop-off (inner planets visibly faster than outer)
 - Moons: small SphereGeometry + MeshBasicMaterial, orbit parent planet position each frame
-- Asteroid belts: InstancedMesh (OctahedronGeometry, 200 instances, 1 draw call), placed in largest orbital gap, slow whole-belt rotation
+- Asteroid belts: Points geometry (500 particles) with per-particle attributes (radius, angle, seed, composition type), placed in largest orbital gap
+  - Keplerian orbits: per-particle speed = baseSpeed / sqrt(radius), inner particles visibly faster
+  - Irregular shapes: fragment shader angular distortion (4 sine lobes seeded per particle) for rocky silhouettes
+  - Gaussian vertical distribution: CLT approximation (avg of 3 randoms) clusters particles near midplane
+  - 3 composition types: silicate (60%, warm brown), carbonaceous (25%, dark charcoal), metallic (15%, blue-gray)
+  - Phase-angle lighting: dot(toStar, toCamera) brightens particles when camera sees their lit side
+  - Dust glow layer: RingGeometry + noise-driven density shader (AdditiveBlending) underneath particles
+  - Large rocks: 4 IcosahedronGeometry meshes with vertex displacement, Keplerian orbits, tumbling rotation
+  - Collision bursts: pool of 8 burst objects (25 particles each), spawn every ~12s (jittered), expand + fade over 1.5s
 - Comets: elliptical Keplerian orbits (5-iteration Newton solver), anti-sunward particle tails (Points + per-particle alpha), coma glow (AdditiveBlending sphere)
 - Pulsars/variable stars: aPulseRate attribute on galaxy Points, vertex shader brightness modulation, fragment shader expanding ring effect
 - Dust lanes: PlaneGeometry + FBM noise shader with NormalBlending (dark, absorptive), 4 regions × 2 layers
@@ -113,3 +121,4 @@ terran, desert, ice, gas_giant, lava, ocean, water — hybrid texture-mapped wit
 - **v3.7.1**: Black hole shader rewrite — correct Schwarzschild geodesic ray tracing with conserved angular momentum (h²), Velocity Verlet symplectic integration (replaces broken Euler + normalize), proper event horizon shadow, disk inner edge at photon sphere (1.5 rs), removed fake photon ring and straight-line secondary image hack
 - **v3.7.2**: System view brightness — star glow sprite (additive billboard, spectral-colored, canvas radial gradient), boosted background starfield (larger points, higher alpha)
 - **v3.8**: Black hole overhaul — Novikov-Thorne temperature profile (ISCO at r=3, plunge region), blackbody color ramp replacing hardcoded colors, Doppler shift applied to temperature (physically correct), gravitational redshift, higher-order Einstein ring images (up to 4 disk crossings with exponential dimming), Einstein ring brightening via screen-space derivatives (dFdx/dFdy), improved adaptive stepping near photon sphere (r=1.5), single-noise spiral (removed expensive second snoise call)
+- **v3.9**: Asteroid belt overhaul — 8 improvements: Keplerian per-particle orbital speeds (inner faster), irregular rocky shapes (4-lobe angular sine distortion in fragment shader), Gaussian vertical distribution (CLT clustering near midplane), 3 composition color types (silicate/carbonaceous/metallic), phase-angle star lighting, additive dust glow layer (RingGeometry + noise shader), 4 large tumbling rocks (IcosahedronGeometry + vertex displacement), rare collision dust bursts (~12s interval, 25-particle expanding puffs)
