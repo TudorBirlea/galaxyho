@@ -44,6 +44,11 @@ export function buildSystemView(star) {
       u_starRadius: { value: starRadius },
       u_invViewProj: { value: new THREE.Matrix4() },
       u_diskTilt: { value: bhCfg.diskTilt || 0.3 },
+      u_diskOuter: { value: 8.0 },
+      u_diskBright: { value: 2.5 },
+      u_dopplerStr: { value: 1.8 },
+      u_spiralStr: { value: 0.35 },
+      u_exposure: { value: 0.9 },
     };
   } else if (star.remnantType === 'neutronStar') {
     const nsCfg = CONFIG.remnants.neutronStar;
