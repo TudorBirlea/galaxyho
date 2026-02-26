@@ -6,6 +6,7 @@ const ttName = document.getElementById('tt-name');
 const ttClass = document.getElementById('tt-class');
 const ttPlanets = document.getElementById('tt-planets');
 const ttBelt = document.getElementById('tt-belt');
+const ttComets = document.getElementById('tt-comets');
 const ttDist = document.getElementById('tt-dist');
 const ttStatus = document.getElementById('tt-status');
 export const ttEnter = document.getElementById('tt-enter');
@@ -40,6 +41,8 @@ export function showTooltip(star, screenX, screenY, distance, isShipHere, isVisi
   ttPlanets.textContent = `${star.planetCount} planet${star.planetCount !== 1 ? 's' : ''}`;
   ttBelt.textContent = star.hasBelt ? 'Asteroid belt' : '';
   ttBelt.style.display = star.hasBelt ? 'block' : 'none';
+  ttComets.textContent = star.hasComets ? 'Comet activity' : '';
+  ttComets.style.display = star.hasComets ? 'block' : 'none';
 
   if (isShipHere) {
     ttDist.textContent = '';

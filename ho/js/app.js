@@ -27,4 +27,5 @@ export const app = {
   selectedPlanetId: null,   // Currently selected planet id in system view
   starGlowSprite: null,     // Star glow billboard sprite
   starfieldMat: null,       // System starfield ShaderMaterial (for brightness tuning)
+  cometEntries: [],         // [{comaSprite, ionPoints, dustPoints, orbitLine, def, prevX/Y/Z}]
 };

@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js?v=3.7';
 import { STAR_VERT, STAR_FRAG, PLANET_VERT, PLANET_FRAG, RING_VERT, RING_FRAG,
-         ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG } from './shaders.js?v=3.7';
+         ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG,
+         COMET_TAIL_VERT, COMET_TAIL_FRAG } from './shaders.js?v=3.7';
 import { mulberry32 } from './utils.js?v=3.7';
-import { generatePlanets, generateAsteroidBelt } from './data.js?v=3.7';
+import { generatePlanets, generateAsteroidBelt, generateComets } from './data.js?v=3.7';
 import { systemGroup, camera, renderer } from './engine.js?v=3.7';
 import { app } from './app.js?v=3.7';
 
@@ -509,6 +510,99 @@ export function buildSystemView(star) {
     app.asteroidNextBurst = beltCfg.collisionInterval * (0.5 + Math.random());
   }
 
+  // v4: Comets — dual tails, activity scaling, sparkle, orbit paths
+  const cometDefs = generateComets(star);
+  if (cometDefs.length > 0) {
+    const cCfg = CONFIG.comets;
+
+    // Shared coma texture — soft radial glow
+    const comaCanvas = document.createElement('canvas');
+    comaCanvas.width = 256; comaCanvas.height = 256;
+    const comaCtx = comaCanvas.getContext('2d');
+    const comaGrad = comaCtx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    comaGrad.addColorStop(0, 'rgba(200,220,255,1)');
+    comaGrad.addColorStop(0.04, 'rgba(180,210,255,0.85)');
+    comaGrad.addColorStop(0.12, 'rgba(150,195,255,0.4)');
+    comaGrad.addColorStop(0.3, 'rgba(120,170,255,0.12)');
+    comaGrad.addColorStop(0.55, 'rgba(100,150,240,0.03)');
+    comaGrad.addColorStop(1, 'rgba(80,130,220,0)');
+    comaCtx.fillStyle = comaGrad;
+    comaCtx.fillRect(0, 0, 256, 256);
+    const comaTex = new THREE.CanvasTexture(comaCanvas);
+
+    for (const def of cometDefs) {
+      // Coma sprite — soft billboard
+      const comaSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: comaTex, transparent: true, opacity: 0.9,
+        blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
+      }));
+      comaSprite.scale.setScalar(2.5);
+      comaSprite.renderOrder = 3;
+      systemGroup.add(comaSprite);
+
+      // Ion tail — blue-white, straight anti-sunward
+      const ionCount = cCfg.ionCount;
+      const ionGeo = new THREE.BufferGeometry();
+      ionGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ionCount * 3), 3));
+      ionGeo.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array(ionCount), 1));
+      ionGeo.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(ionCount), 1));
+      ionGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 150);
+      const ionMat = new THREE.ShaderMaterial({
+        vertexShader: COMET_TAIL_VERT, fragmentShader: COMET_TAIL_FRAG,
+        uniforms: { u_color: { value: new THREE.Vector3(0.45, 0.65, 1.0) } },
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      const ionPoints = new THREE.Points(ionGeo, ionMat);
+      ionPoints.frustumCulled = false;
+      ionPoints.renderOrder = 2;
+      systemGroup.add(ionPoints);
+
+      // Dust tail — warm gold, curved behind orbit
+      const dustCount = cCfg.dustCount;
+      const dustGeo = new THREE.BufferGeometry();
+      dustGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(dustCount * 3), 3));
+      dustGeo.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array(dustCount), 1));
+      dustGeo.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(dustCount), 1));
+      dustGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 150);
+      const dustMat = new THREE.ShaderMaterial({
+        vertexShader: COMET_TAIL_VERT, fragmentShader: COMET_TAIL_FRAG,
+        uniforms: { u_color: { value: new THREE.Vector3(0.95, 0.75, 0.35) } },
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      const dustPoints = new THREE.Points(dustGeo, dustMat);
+      dustPoints.frustumCulled = false;
+      dustPoints.renderOrder = 2;
+      systemGroup.add(dustPoints);
+
+      // Orbit line — dashed ellipse
+      const orbitPts = [];
+      for (let k = 0; k <= 200; k++) {
+        const E = (k / 200) * Math.PI * 2;
+        const cosE = Math.cos(E), sinE = Math.sin(E);
+        const r = def.semiMajorAxis * (1 - def.eccentricity * cosE);
+        const ta = Math.atan2(Math.sqrt(1 - def.eccentricity * def.eccentricity) * sinE, cosE - def.eccentricity);
+        const cx = Math.cos(ta) * r, cz = Math.sin(ta) * r;
+        const ci = Math.cos(def.inclination), si = Math.sin(def.inclination);
+        orbitPts.push(new THREE.Vector3(cx, cz * si, cz * ci));
+      }
+      const cometOrbitLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(orbitPts),
+        new THREE.LineDashedMaterial({
+          color: 0x446688, transparent: true, opacity: 0.15,
+          dashSize: 0.5, gapSize: 0.3, depthWrite: false,
+        })
+      );
+      cometOrbitLine.computeLineDistances();
+      cometOrbitLine.renderOrder = 1;
+      systemGroup.add(cometOrbitLine);
+
+      app.cometEntries.push({
+        def, comaSprite, ionPoints, dustPoints, orbitLine: cometOrbitLine,
+        prevX: 0, prevY: 0, prevZ: 0,
+      });
+    }
+  }
+
   // v3: Planet selection ring indicator
   const selRingGeo = new THREE.RingGeometry(1, 1.08, 64);
   const selRingMat = new THREE.ShaderMaterial({
@@ -575,6 +669,7 @@ export function clearSystemView() {
   app.selectedPlanetId = null;
   app.starGlowSprite = null;
   app.starfieldMat = null;
+  app.cometEntries = [];
 }
 
 const _ivp = new THREE.Matrix4();
@@ -709,6 +804,118 @@ export function updateSystemView(time) {
   // v3: Rotate neutron star beams
   if (app.neutronBeamGroup) {
     app.neutronBeamGroup.rotation.z = time * 2.0;
+  }
+
+  // v4: Update comets
+  if (app.cometEntries.length > 0) {
+    const cCfg = CONFIG.comets;
+    const _antiSun = new THREE.Vector3();
+    const _tangent = new THREE.Vector3();
+    const _up = new THREE.Vector3(0, 1, 0);
+
+    for (const c of app.cometEntries) {
+      const def = c.def;
+      const a = def.semiMajorAxis, e = def.eccentricity;
+
+      // Kepler solver — mean anomaly → eccentric anomaly
+      const M = def.orbitPhase + time * cCfg.speedMult / Math.pow(a, 1.5);
+      let E = M;
+      for (let k = 0; k < 5; k++) E = M + e * Math.sin(E);
+      const cosE = Math.cos(E), sinE = Math.sin(E);
+      const ta = Math.atan2(Math.sqrt(1 - e * e) * sinE, cosE - e);
+      const r = a * (1 - e * cosE);
+      const ci = Math.cos(def.inclination), si = Math.sin(def.inclination);
+      const lx = Math.cos(ta) * r, lz = Math.sin(ta) * r;
+      const cx = lx, cy = lz * si, cz = lz * ci;
+
+      // Activity factor (proximity to star)
+      const activity = Math.min(Math.pow(1.0 / Math.max(r / a, 0.15), cCfg.activityExp), 4.0);
+
+      // Anti-sunward direction
+      _antiSun.set(cx, cy, cz).normalize();
+
+      // Orbital tangent: cross(radial, up)
+      _tangent.crossVectors(_antiSun, _up).normalize();
+      if (_tangent.lengthSq() < 0.01) _tangent.set(1, 0, 0);
+
+      // Coma sprite
+      c.comaSprite.position.set(cx, cy, cz);
+      const comaSize = (1.2 + activity * 0.8) * 1.5;
+      c.comaSprite.scale.setScalar(comaSize);
+      c.comaSprite.material.opacity = Math.min(0.7 + activity * 0.15, 1.0);
+
+      // Base tail length
+      const baseLen = 2.0 + 5.0 / Math.max(r, 1.0);
+      const ionLen = baseLen * Math.max(activity, 0.5);
+
+      // Ion tail — straight anti-sunward
+      const iGeo = c.ionPoints.geometry;
+      const iPos = iGeo.attributes.position.array;
+      const iAlpha = iGeo.attributes.aAlpha.array;
+      const iSize = iGeo.attributes.aSize.array;
+      const ionCount = cCfg.ionCount;
+
+      for (let i = 0; i < ionCount; i++) {
+        const t01 = i / ionCount;
+        const spread = t01 * 0.25;
+        const s1 = Math.sin(i * 7.31 + def.seed * 0.00117) * 0.5;
+        const s2 = Math.cos(i * 5.73 + def.seed * 0.00231) * 0.5;
+        const s3 = Math.sin(i * 11.13 + def.seed * 0.00073) * 0.3;
+        const latX = (s1 + s3) * spread, latY = s2 * spread, latZ = (s2 - s1) * spread * 0.5;
+
+        iPos[i*3]     = cx + _antiSun.x * t01 * ionLen + latX;
+        iPos[i*3 + 1] = cy + _antiSun.y * t01 * ionLen + latY;
+        iPos[i*3 + 2] = cz + _antiSun.z * t01 * ionLen + latZ;
+
+        iSize[i] = (1.0 - t01 * 0.7) * 3.5;
+
+        let al = (1.0 - t01) * 0.6 * Math.min(activity, 2.5);
+        if (t01 < 0.2) al *= 1.0 + (1.0 - t01 / 0.2) * 0.8;
+        // Sparkle
+        const sv = Math.sin((i + def.seed) * 127.1 + time * 3.0) * 43758.5;
+        al *= (1.0 - cCfg.sparkleAmt * 0.5 + cCfg.sparkleAmt * (sv - Math.floor(sv)));
+        iAlpha[i] = al;
+      }
+      iGeo.attributes.position.needsUpdate = true;
+      iGeo.attributes.aAlpha.needsUpdate = true;
+      iGeo.attributes.aSize.needsUpdate = true;
+
+      // Dust tail — curved behind orbit
+      const dLen = ionLen * 0.75;
+      const dGeo = c.dustPoints.geometry;
+      const dPos = dGeo.attributes.position.array;
+      const dAlpha = dGeo.attributes.aAlpha.array;
+      const dSize = dGeo.attributes.aSize.array;
+      const dustCount = cCfg.dustCount;
+      const curvature = cCfg.dustCurvature;
+
+      for (let i = 0; i < dustCount; i++) {
+        const frac = i / dustCount;
+        const spread = frac * 0.4;
+        const s1 = Math.sin(i * 7.31 + (def.seed + 500) * 0.00117) * 0.5;
+        const s2 = Math.cos(i * 5.73 + (def.seed + 500) * 0.00231) * 0.5;
+        const s3 = Math.sin(i * 11.13 + (def.seed + 500) * 0.00073) * 0.3;
+        const latX = (s1 + s3) * spread, latY = s2 * spread, latZ = (s2 - s1) * spread * 0.5;
+        const curve = frac * frac * curvature;
+
+        dPos[i*3]     = cx + _antiSun.x * frac * dLen + _tangent.x * curve + latX;
+        dPos[i*3 + 1] = cy + _antiSun.y * frac * dLen + _tangent.y * curve + latY;
+        dPos[i*3 + 2] = cz + _antiSun.z * frac * dLen + _tangent.z * curve + latZ;
+
+        dSize[i] = (1.0 - frac * 0.6) * 3.0;
+
+        let al = (1.0 - frac) * 0.45 * Math.min(activity, 2.5);
+        if (frac < 0.15) al *= 1.0 + (1.0 - frac / 0.15) * 0.6;
+        const sv2 = Math.sin((i + def.seed + 500) * 127.1 + time * 3.0) * 43758.5;
+        al *= (1.0 - cCfg.sparkleAmt * 0.5 + cCfg.sparkleAmt * (sv2 - Math.floor(sv2)));
+        dAlpha[i] = al;
+      }
+      dGeo.attributes.position.needsUpdate = true;
+      dGeo.attributes.aAlpha.needsUpdate = true;
+      dGeo.attributes.aSize.needsUpdate = true;
+
+      c.prevX = cx; c.prevY = cy; c.prevZ = cz;
+    }
   }
 }
 

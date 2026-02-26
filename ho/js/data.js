@@ -145,11 +145,13 @@ export function generateGalaxy(seed) {
     }
   }
 
-  // ── Pre-compute asteroid belt presence for galaxy-view tooltips ──
+  // ── Pre-compute asteroid belt & comet presence for galaxy-view tooltips ──
   for (const s of stars) {
     const planets = generatePlanets(s);
     const belt = generateAsteroidBelt(s, planets);
     s.hasBelt = belt !== null;
+    const comets = generateComets(s);
+    s.hasComets = comets.length > 0;
   }
 
   return { seed, stars };
@@ -241,5 +243,25 @@ export function generateAsteroidBelt(star, planets) {
   if (bestGap < 3) return null;
 
   return { beltInnerRadius: bestInner, beltOuterRadius: bestOuter, beltSeed: hashInt(star.seed, 501) };
+}
+
+// v4: Comet generation
+export function generateComets(star) {
+  const rng = mulberry32(star.seed + 600);
+  const cfg = CONFIG.comets;
+  const comets = [];
+  const count = cfg.minPerSystem + Math.floor(rng() * (cfg.maxPerSystem - cfg.minPerSystem + 1));
+  for (let i = 0; i < count; i++) {
+    if (rng() > cfg.chance) continue;
+    comets.push({
+      id: i,
+      semiMajorAxis: cfg.semiMajorMin + rng() * (cfg.semiMajorMax - cfg.semiMajorMin),
+      eccentricity: cfg.eccentricity[0] + rng() * (cfg.eccentricity[1] - cfg.eccentricity[0]),
+      orbitPhase: rng() * Math.PI * 2,
+      inclination: (rng() - 0.5) * 0.4,
+      seed: hashInt(star.seed, 600 + i),
+    });
+  }
+  return comets;
 }
 
