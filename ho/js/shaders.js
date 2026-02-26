@@ -875,18 +875,15 @@ ${NOISE_GLSL}
 
 vec3 ACESFilm(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.,1.);}
 
-// Cheap blackbody approximation via smooth ramp (0=red → 1=blue-white)
+// Blackbody color ramp (0=deep red → 1=blue-white)
 vec3 blackbody(float t){
-  vec3 cool=vec3(0.8,0.15,0.02);
-  vec3 warm=vec3(1.,0.45,0.08);
-  vec3 hot=vec3(1.,0.85,0.6);
-  vec3 vhot=vec3(0.8,0.85,1.);
-  if(t<0.3) return mix(cool,warm,t/0.3);
-  if(t<0.6) return mix(warm,hot,(t-0.3)/0.3);
-  return mix(hot,vhot,min((t-0.6)/0.4,1.));
+  vec3 a=mix(vec3(0.8,0.15,0.02),vec3(1.,0.45,0.08),clamp(t/0.3,0.,1.));
+  vec3 b=mix(vec3(1.,0.45,0.08),vec3(1.,0.85,0.6),clamp((t-0.3)/0.3,0.,1.));
+  vec3 c=mix(vec3(1.,0.85,0.6),vec3(0.8,0.85,1.),clamp((t-0.6)/0.4,0.,1.));
+  return t<0.3?a:t<0.6?b:c;
 }
 
-// Disk coordinate system (tilted plane)
+// Disk basis (tilted plane)
 mat3 diskBasis;
 vec3 diskNormal;
 void initDiskBasis(float tilt){
@@ -895,164 +892,126 @@ void initDiskBasis(float tilt){
   diskNormal=vec3(0.,c,s);
 }
 
-// Accretion disk: Novikov-Thorne temperature + Doppler beaming + grav redshift
+// Accretion disk with Novikov-Thorne temperature + Doppler + grav redshift
 vec4 evalDisk(float r, float angle, vec3 rd){
   if(r<1.5||r>u_diskOuter) return vec4(0.);
 
-  // Novikov-Thorne temperature profile: peaks at r ~ 4.08
-  float rIsco=3.0;
-  float tNorm=0.0;
-  if(r>=rIsco){
-    tNorm=pow(max((1.-sqrt(rIsco/r))/(r*r*r),0.),0.25);
-    tNorm/=0.2217; // normalize so peak=1
+  // Novikov-Thorne temperature: peaks at r~4.08, zero below ISCO(3)
+  float tNorm=0.;
+  if(r>=3.){
+    tNorm=pow(max((1.-sqrt(3./r))/(r*r*r),0.),0.25)/0.2217;
   }
   float plunge=smoothstep(1.5,3.,r);
   tNorm*=plunge;
 
-  // Brightness: L ~ T^3, outer edge fade
-  float brightness=pow(max(tNorm,0.01),3.)*u_diskBright*plunge;
-  brightness*=smoothstep(u_diskOuter,u_diskOuter-1.5,r);
+  // Brightness + outer fade
+  float density=pow(max(tNorm,0.01),3.)*u_diskBright*plunge
+    *smoothstep(u_diskOuter,u_diskOuter-1.5,r);
 
-  // Single noise for spiral structure
-  float spiral=(1.-u_spiralStr)+u_spiralStr*
+  // Spiral noise (single sample)
+  density*=(1.-u_spiralStr)+u_spiralStr*
     snoise(vec3(angle*2.-r*0.8+u_time*0.12,r*2.,u_time*0.04));
 
-  float density=brightness*spiral;
-
-  // Doppler beaming: D^3 factor
-  vec3 tangentLocal=vec3(-sin(angle),0.,cos(angle));
-  vec3 tangentWorld=transpose(diskBasis)*tangentLocal;
-  float orbitalSpeed=0.5/sqrt(max(r,1.5));
-  float dopplerShift=dot(tangentWorld*orbitalSpeed,normalize(rd));
-  float D=1./(1.-dopplerShift*u_dopplerStr);
-  D=clamp(D,0.15,4.);
+  // Doppler D^3
+  vec3 tW=transpose(diskBasis)*vec3(-sin(angle),0.,cos(angle));
+  float dShift=dot(tW*(0.5/sqrt(max(r,1.5))),normalize(rd));
+  float D=clamp(1./(1.-dShift*u_dopplerStr),0.15,4.);
   density*=D*D*D;
 
-  // Doppler shifts temperature → color
-  float tShifted=tNorm/clamp(1.-dopplerShift*1.5,0.4,2.5);
-  // Gravitational redshift: (1+z)=1/sqrt(1-rs/r)
-  tShifted/=(1./sqrt(max(1.-1./r,0.05)));
-  vec3 col=blackbody(clamp(tShifted,0.,1.));
-
-  return vec4(col*density,density);
+  // Doppler + gravitational redshift → color
+  float tS=tNorm/clamp(1.-dShift*1.5,0.4,2.5);
+  tS*=sqrt(max(1.-1./r,0.05));
+  return vec4(blackbody(clamp(tS,0.,1.))*density,density);
 }
 
-// Background starfield (3 layers, hash-based)
+// Background stars (2 layers — fast hash)
 vec3 bgStars(vec3 rd){
   vec3 col=vec3(0.);
-  vec3 dN=normalize(rd);
-  float theta=acos(clamp(dN.y,-1.,1.));
-  float phi=atan(dN.z,dN.x);
-  for(int layer=0;layer<3;layer++){
-    float fl=float(layer);
-    float dens=120.+fl*80.;
+  float theta=acos(clamp(rd.y,-1.,1.));
+  float phi=atan(rd.z,rd.x);
+  for(int L=0;L<2;L++){
+    float fl=float(L);
+    float dens=140.+fl*100.;
     vec2 grid=vec2(phi*dens,theta*dens);
-    vec2 cellId=floor(grid);
-    vec2 cellUV=fract(grid)-0.5;
-    float h=fract(sin(dot(cellId+fl*50.,vec2(127.1,311.7)))*43758.5453);
-    float threshold=0.96+fl*0.012;
-    if(h>threshold){
-      vec2 starOff=vec2(
-        fract(sin(dot(cellId+fl*50.,vec2(269.5,183.3)))*43758.5453),
-        fract(sin(dot(cellId+fl*50.,vec2(419.2,371.9)))*43758.5453)
-      )-0.5;
-      float dist=length(cellUV-starOff*0.6);
-      float br=(h-threshold)/(1.-threshold);
-      float twinkle=0.7+0.3*sin(u_time*(1.+h*3.)+h*100.);
-      float point=exp(-dist*dist*900.)*br*twinkle;
-      vec3 sCol=mix(vec3(0.6,0.7,1.),vec3(1.,0.85,0.7),fract(h*7.));
-      col+=sCol*point*(1.-fl*0.25)*0.6;
+    vec2 cid=floor(grid);
+    vec2 cuv=fract(grid)-0.5;
+    float h=fract(sin(dot(cid+fl*50.,vec2(127.1,311.7)))*43758.5453);
+    if(h>0.965){
+      vec2 off=vec2(fract(sin(dot(cid+fl*50.,vec2(269.5,183.3)))*43758.5453),
+                    fract(sin(dot(cid+fl*50.,vec2(419.2,371.9)))*43758.5453))-0.5;
+      float d=length(cuv-off*0.6);
+      float br=(h-0.965)/0.035;
+      float tw=0.7+0.3*sin(u_time*(1.+h*3.)+h*100.);
+      col+=mix(vec3(0.6,0.7,1.),vec3(1.,0.85,0.7),fract(h*7.))
+           *exp(-d*d*900.)*br*tw*(1.-fl*0.3)*0.6;
     }
   }
   return col;
 }
 
 void main(){
-  vec4 farClip=u_invViewProj*vec4(vUV,1.,1.);
-  farClip/=farClip.w;
-  vec3 rd=normalize(farClip.xyz-cameraPosition);
+  vec4 fc=u_invViewProj*vec4(vUV,1.,1.); fc/=fc.w;
+  vec3 rd=normalize(fc.xyz-cameraPosition);
   vec3 ro=cameraPosition/u_starRadius;
-
   initDiskBasis(u_diskTilt);
 
-  // ── Geodesic ray march ──
-  vec3 pos=ro;
-  vec3 vel=rd;
+  vec3 pos=ro, vel=rd;
   float h2=dot(cross(pos,vel),cross(pos,vel));
-
   vec3 col=vec3(0.);
-  float diskAccum=0.;
-  bool hitHorizon=false;
-  float prevDiskY=dot(pos,diskNormal);
-  int diskCrossings=0;
+  float dAcc=0.;
+  bool hit=false;
+  float prevY=dot(pos,diskNormal);
+  int nCross=0;
 
-  for(int i=0;i<120;i++){
+  for(int i=0;i<100;i++){
     float r=length(pos);
-    if(r<1.0){ hitHorizon=true; break; }
-    if(r>50.&&i>3) break;
+    if(r<1.){hit=true;break;}
+    if(r>50.&&i>3)break;
 
-    float speed=length(vel);
+    float sp=length(vel);
+    float dt=clamp(min((r-1.)*0.3,abs(r-1.5)*0.25+0.008),0.008,0.5)/max(sp,0.5);
 
-    // Adaptive step: small near horizon & photon sphere
-    float hFactor=(r-1.)*0.3;
-    float pFactor=abs(r-1.5)*0.25+0.008;
-    float dt=clamp(min(hFactor,pFactor),0.008,0.5)/max(speed,0.5);
-
-    // Velocity Verlet (symplectic — conserves h²)
-    float r5=r*r*r*r*r;
+    // Velocity Verlet
+    float r3=r*r*r, r5=r3*r*r;
     vec3 a1=-1.5*h2*pos/r5;
-    vec3 newPos=pos+vel*dt+0.5*a1*dt*dt;
-    float nr=length(newPos);
-    if(nr<1.0){ hitHorizon=true; break; }
+    vec3 np=pos+vel*dt+0.5*a1*dt*dt;
+    float nr=length(np);
+    if(nr<1.){hit=true;break;}
     float nr5=nr*nr*nr*nr*nr;
-    vec3 a2=-1.5*h2*newPos/max(nr5,0.001);
-    vel+=0.5*(a1+a2)*dt;
+    vel+=0.5*(a1-1.5*h2*np/max(nr5,0.001))*dt;
 
-    // Disk crossing — up to 4 for higher-order Einstein ring images
-    float curDiskY=dot(newPos,diskNormal);
-    if(prevDiskY*curDiskY<0.0&&diskAccum<0.98&&diskCrossings<4){
-      diskCrossings++;
-      float frac=prevDiskY/(prevDiskY-curDiskY);
-      vec3 crossPt=mix(pos,newPos,frac);
-      float crossR=length(crossPt);
-      if(crossR>1.5){
-        vec3 crossD=diskBasis*crossPt;
-        float cr=length(crossD.xz);
-        float cangle=atan(crossD.z,crossD.x);
-        vec4 d=evalDisk(cr,cangle,normalize(vel));
+    // Disk crossings (up to 4)
+    float curY=dot(np,diskNormal);
+    if(prevY*curY<0.&&dAcc<0.98&&nCross<4){
+      nCross++;
+      vec3 cp=mix(pos,np,prevY/(prevY-curY));
+      float cr=length(cp);
+      if(cr>1.5){
+        vec3 cd=diskBasis*cp;
+        vec4 d=evalDisk(length(cd.xz),atan(cd.z,cd.x),normalize(vel));
         if(d.a>0.001){
-          float orderDim=exp(-float(diskCrossings-1)*2.2);
-          float alpha=min(d.a*0.8*orderDim,1.-diskAccum);
-          col+=d.rgb*alpha;
-          diskAccum+=alpha;
+          float a=min(d.a*0.8*exp(-float(nCross-1)*2.2),1.-dAcc);
+          col+=d.rgb*a; dAcc+=a;
         }
       }
     }
-    prevDiskY=curDiskY;
-    pos=newPos;
+    prevY=curY;
+    pos=np;
   }
 
-  // Shadow: captured rays → pure black
-  if(hitHorizon){
-    col=vec3(0.);
-    diskAccum=0.;
-  }
+  if(hit){col=vec3(0.);dAcc=0.;}
 
-  // Background stars with Einstein ring brightening
-  if(!hitHorizon){
-    vec3 finalDir=normalize(vel);
-    vec3 bg=bgStars(finalDir);
-    vec3 ddx=dFdx(finalDir);
-    vec3 ddy=dFdy(finalDir);
-    float solidAngle=length(cross(ddx,ddy));
-    float amp=clamp(0.00012/(solidAngle+0.00004),1.,20.);
-    bg*=amp;
-    col+=bg*(1.-diskAccum);
+  // Background + Einstein ring brightening
+  if(!hit){
+    vec3 fd=normalize(vel);
+    vec3 bg=bgStars(fd);
+    vec3 dx=dFdx(fd),dy=dFdy(fd);
+    bg*=clamp(0.00012/(length(cross(dx,dy))+0.00004),1.,20.);
+    col+=bg*(1.-dAcc);
   }
 
   col=ACESFilm(col*u_exposure);
-  float vig=1.-0.12*dot(vUV*0.5,vUV*0.5);
-  col*=vig;
+  col*=1.-0.12*dot(vUV*0.5,vUV*0.5);
   col=pow(col,vec3(0.92));
   gl_FragColor=vec4(col,1.);
 }`;

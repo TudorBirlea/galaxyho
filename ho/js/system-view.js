@@ -45,10 +45,10 @@ export function buildSystemView(star) {
       u_invViewProj: { value: new THREE.Matrix4() },
       u_diskTilt: { value: bhCfg.diskTilt || 0.3 },
       u_diskOuter: { value: 8.0 },
-      u_diskBright: { value: 2.5 },
+      u_diskBright: { value: 1.2 },
       u_dopplerStr: { value: 1.8 },
       u_spiralStr: { value: 0.35 },
-      u_exposure: { value: 0.9 },
+      u_exposure: { value: 0.7 },
     };
   } else if (star.remnantType === 'neutronStar') {
     const nsCfg = CONFIG.remnants.neutronStar;
@@ -105,13 +105,16 @@ export function buildSystemView(star) {
   app.systemStarMesh.renderOrder = -1;
   systemGroup.add(app.systemStarMesh);
 
-  // Invisible depth sphere
-  const depthSphere = new THREE.Mesh(
-    new THREE.SphereGeometry(starRadius, 32, 32),
-    new THREE.MeshBasicMaterial({ colorWrite: false })
-  );
-  depthSphere.renderOrder = 0;
-  systemGroup.add(depthSphere);
+  // Invisible depth sphere — prevents planets rendering inside star
+  // Skipped for black holes: shader handles its own shadow via geodesic tracing
+  if (star.remnantType !== 'blackHole') {
+    const depthSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(starRadius, 32, 32),
+      new THREE.MeshBasicMaterial({ colorWrite: false })
+    );
+    depthSphere.renderOrder = 0;
+    systemGroup.add(depthSphere);
+  }
 
   // Star glow sprite — additive billboard for ambient scene fill
   if (star.remnantType !== 'blackHole') {
