@@ -388,6 +388,7 @@ export function buildSystemView(star) {
     });
 
     const beltPoints = new THREE.Points(beltGeo, beltMat);
+    beltPoints.frustumCulled = false;
     beltPoints.renderOrder = 1;
     beltPoints.userData = { beltInner: bInner, beltOuter: bOuter };
     systemGroup.add(beltPoints);

@@ -96,7 +96,7 @@ export const CONFIG = {
     orbitSpeed: [0.3, 0.8],
   },
   asteroidBelt: {
-    chance: 0.15,
+    chance: 0.25,
     rockCount: 500,
     rockScaleMin: 0.5,
     rockScaleMax: 2.0,
