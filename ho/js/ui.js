@@ -5,6 +5,7 @@ const tooltipEl = document.getElementById('tooltip');
 const ttName = document.getElementById('tt-name');
 const ttClass = document.getElementById('tt-class');
 const ttPlanets = document.getElementById('tt-planets');
+const ttBelt = document.getElementById('tt-belt');
 const ttDist = document.getElementById('tt-dist');
 const ttStatus = document.getElementById('tt-status');
 export const ttEnter = document.getElementById('tt-enter');
@@ -37,6 +38,8 @@ export function showTooltip(star, screenX, screenY, distance, isShipHere, isVisi
     ttClass.textContent = `Class ${star.spectralClass} · ${sc.tempLabel}`;
   }
   ttPlanets.textContent = `${star.planetCount} planet${star.planetCount !== 1 ? 's' : ''}`;
+  ttBelt.textContent = star.hasBelt ? 'Asteroid belt' : '';
+  ttBelt.style.display = star.hasBelt ? 'block' : 'none';
 
   if (isShipHere) {
     ttDist.textContent = '';

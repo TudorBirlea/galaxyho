@@ -145,6 +145,13 @@ export function generateGalaxy(seed) {
     }
   }
 
+  // ── Pre-compute asteroid belt presence for galaxy-view tooltips ──
+  for (const s of stars) {
+    const planets = generatePlanets(s);
+    const belt = generateAsteroidBelt(s, planets);
+    s.hasBelt = belt !== null;
+  }
+
   return { seed, stars };
 }
 
