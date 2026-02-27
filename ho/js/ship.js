@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { CONFIG } from './config.js?v=6.0';
 import { app } from './app.js?v=6.0';
 import { controls, systemGroup } from './engine.js?v=6.0';
-import { easeInOutCubic } from './utils.js?v=6.0';
 import { getUpgradeEffects } from './gameplay.js?v=6.0';
 
 const _lookAt = new THREE.Vector3();
@@ -202,6 +201,81 @@ export function positionShipAtStar(starRadius) {
   app.shipOrbit = createOrbitState(parkR, angle, sc.parkingOrbitSpeed);
 }
 
+// ── Gravity simulation helpers ──
+
+function deriveGMStar() {
+  if (app.systemPlanets.length === 0) return 50;
+  let ref = app.systemPlanets[0];
+  for (const p of app.systemPlanets) {
+    if (p.data.orbitRadius < ref.data.orbitRadius) ref = p;
+  }
+  const r = ref.data.orbitRadius;
+  const omega = ref.data.orbitSpeed;
+  return omega * omega * r * r * r;
+}
+
+function computeGravAccel(px, pz, GM_star, time) {
+  const gc = CONFIG.ship.gravity;
+  let ax = 0, az = 0;
+
+  // Star gravity (at origin)
+  const r2star = px * px + pz * pz;
+  const rStar = Math.sqrt(r2star);
+  if (rStar > gc.starSoftening) {
+    const rStar3 = r2star * rStar;
+    ax -= GM_star * px / rStar3;
+    az -= GM_star * pz / rStar3;
+  }
+
+  // Planet gravity
+  for (const p of app.systemPlanets) {
+    const pa = p.data.orbitPhase + time * p.data.orbitSpeed;
+    const ppx = Math.cos(pa) * p.data.orbitRadius;
+    const ppz = Math.sin(pa) * p.data.orbitRadius;
+
+    const dx = px - ppx;
+    const dz = pz - ppz;
+    const dist2 = dx * dx + dz * dz;
+    const soft = p.data.visualSize * gc.planetSofteningMult;
+    const dist2Soft = dist2 + soft * soft;
+    const dist = Math.sqrt(dist2Soft);
+    const dist3 = dist2Soft * dist;
+
+    const gm = gc.planetMassFactor * p.data.visualSize * p.data.visualSize * p.data.visualSize;
+    ax -= gm * dx / dist3;
+    az -= gm * dz / dist3;
+  }
+
+  return { ax, az };
+}
+
+function computeGuidance(px, pz, transfer, simTime) {
+  const gc = CONFIG.ship.gravity;
+  const te = transfer.targetEntry;
+
+  const elapsed = simTime - transfer.startTime;
+  const progress = Math.min(elapsed / transfer.duration, 1);
+  const timeToArrival = Math.max(transfer.duration - elapsed, 0.5);
+  const arrivalTime = simTime + timeToArrival;
+  const targetAngle = te.data.orbitPhase + arrivalTime * te.data.orbitSpeed;
+  const targetX = Math.cos(targetAngle) * te.data.orbitRadius;
+  const targetZ = Math.sin(targetAngle) * te.data.orbitRadius;
+
+  const dx = targetX - px;
+  const dz = targetZ - pz;
+  const dist = Math.sqrt(dx * dx + dz * dz);
+  if (dist < 0.1) return { ax: 0, az: 0 };
+
+  // Ramps up quadratically with progress
+  const ramp = progress * progress;
+  const strength = gc.guidanceStrength * ramp;
+
+  return {
+    ax: (dx / dist) * strength,
+    az: (dz / dist) * strength,
+  };
+}
+
 export function flyShipToPlanet(targetEntry, onArrive) {
   if (!app.shipMesh || !targetEntry) return;
   const orb = app.shipOrbit;
@@ -218,10 +292,8 @@ export function flyShipToPlanet(targetEntry, onArrive) {
   // Departure radius: current orbit around star
   let r1;
   if (s === 'docked' && orb.dockedPlanetId !== null) {
-    // Undock: use the planet's stellar orbit radius as departure
     const dockedEntry = app.systemPlanets.find(p => p.data.id === orb.dockedPlanetId);
     r1 = dockedEntry ? dockedEntry.data.orbitRadius : orb.orbitRadius;
-    // Set ship angle to current position angle around star
     orb.orbitAngle = Math.atan2(app.shipMesh.position.z, app.shipMesh.position.x);
   } else {
     r1 = orb.orbitRadius;
@@ -230,145 +302,30 @@ export function flyShipToPlanet(targetEntry, onArrive) {
   // Arrival radius: target planet's orbit
   const r2 = targetEntry.data.orbitRadius;
 
-  // Compute transfer ellipse parameters
+  // Duration estimate from Kepler (for timeout safety and guidance pacing)
   const semiMajor = (r1 + r2) / 2;
-  const ecc = Math.abs(r1 - r2) / (r1 + r2);
-
-  // Transfer duration from Kepler's 3rd law (half-orbit), scaled for gameplay
   const rawDuration = Math.PI * Math.sqrt(semiMajor * semiMajor * semiMajor) * sc.transferSpeedScale;
-  let duration = Math.max(0.8, Math.min(4.0, rawDuration)) / speedMult;
-
-  // Check for gravity slingshot opportunity
-  const slingPlanet = findSlingshotPlanet(r1, r2, targetEntry.data.id);
-  let slingshot = null;
-
-  if (slingPlanet) {
-    duration *= sc.slingshotDurationMult;
-    const now = performance.now() / 1000;
-
-    // P0: departure position
-    const P0 = {
-      x: Math.cos(orb.orbitAngle) * r1,
-      z: Math.sin(orb.orbitAngle) * r1,
-    };
-
-    // Predict target planet position at arrival
-    const arrivalTime = now + duration;
-    const targetAngle = targetEntry.data.orbitPhase + arrivalTime * targetEntry.data.orbitSpeed;
-    const P3 = {
-      x: Math.cos(targetAngle) * r2,
-      z: Math.sin(targetAngle) * r2,
-    };
-
-    // Predict slingshot planet position at midpoint
-    const midTime = now + duration / 2;
-    const slingAngle = slingPlanet.data.orbitPhase + midTime * slingPlanet.data.orbitSpeed;
-    const slingPos = {
-      x: Math.cos(slingAngle) * slingPlanet.data.orbitRadius,
-      z: Math.sin(slingAngle) * slingPlanet.data.orbitRadius,
-    };
-
-    // Control points: 1/3 and 2/3 lerp between P0→P3, pulled toward slingshot planet
-    const pull = sc.slingshotPull;
-    const P1 = {
-      x: P0.x + (P3.x - P0.x) * 0.33 + (slingPos.x - (P0.x + (P3.x - P0.x) * 0.33)) * pull,
-      z: P0.z + (P3.z - P0.z) * 0.33 + (slingPos.z - (P0.z + (P3.z - P0.z) * 0.33)) * pull,
-    };
-    const P2 = {
-      x: P0.x + (P3.x - P0.x) * 0.67 + (slingPos.x - (P0.x + (P3.x - P0.x) * 0.67)) * pull,
-      z: P0.z + (P3.z - P0.z) * 0.67 + (slingPos.z - (P0.z + (P3.z - P0.z) * 0.67)) * pull,
-    };
-
-    slingshot = { bezierP0: P0, bezierP1: P1, bezierP2: P2, bezierP3: P3 };
-  }
+  const duration = Math.max(0.8, Math.min(4.0, rawDuration)) / speedMult;
 
   orb.transfer = {
     r1,
     r2,
-    startAngle: orb.orbitAngle,
-    semiMajor,
-    eccentricity: ecc,
-    duration,
-    startTime: performance.now() / 1000,
     targetEntry,
     onArrive,
     goingInward: r2 < r1,
-    slingshot,
+    duration,
+    startTime: performance.now() / 1000,
+    // Gravity sim state (seeded at BURN_DEPART→TRANSFER transition)
+    posX: 0, posZ: 0,
+    velX: 0, velZ: 0,
+    GM_star: 0,
+    maxDuration: duration * CONFIG.ship.gravity.maxDurationMult,
   };
 
   // Transition to departure burn
   orb.state = 'burn_depart';
   orb.transfer.burnStart = performance.now() / 1000;
   orb.dockedPlanetId = null;
-}
-
-// ── Gravity slingshot helpers ──
-
-function findSlingshotPlanet(r1, r2, targetPlanetId) {
-  const rMin = Math.min(r1, r2);
-  const rMax = Math.max(r1, r2);
-  const midR = (r1 + r2) / 2;
-  const gap = CONFIG.ship.slingshotMinGap;
-
-  let best = null;
-  let bestDist = Infinity;
-
-  for (const pe of app.systemPlanets) {
-    if (pe.data.id === targetPlanetId) continue;
-    const pr = pe.data.orbitRadius;
-    if (pr > rMin + gap && pr < rMax - gap) {
-      const d = Math.abs(pr - midR);
-      if (d < bestDist) {
-        bestDist = d;
-        best = pe;
-      }
-    }
-  }
-  return best;
-}
-
-function evalSlingshotTransfer(transfer, t) {
-  const { bezierP0, bezierP1, bezierP2, bezierP3 } = transfer.slingshot;
-  const u = 1 - t;
-  const x = u*u*u*bezierP0.x + 3*u*u*t*bezierP1.x + 3*u*t*t*bezierP2.x + t*t*t*bezierP3.x;
-  const z = u*u*u*bezierP0.z + 3*u*u*t*bezierP1.z + 3*u*t*t*bezierP2.z + t*t*t*bezierP3.z;
-  return {
-    x,
-    z,
-    angle: Math.atan2(z, x),
-    radius: Math.sqrt(x * x + z * z),
-  };
-}
-
-// Evaluate position on transfer ellipse (polar form, parametric angle)
-function evalTransfer(transfer, t) {
-  const { r1, r2, startAngle, semiMajor, eccentricity, goingInward } = transfer;
-
-  // Sweep half orbit (PI radians) in the direction of travel
-  const sweepDir = goingInward ? 1 : 1; // always counterclockwise
-  const theta = startAngle + t * Math.PI * sweepDir;
-
-  // Polar form of ellipse: r = a(1-e²) / (1 + e*cos(localAngle))
-  // localAngle goes from 0 (at r1) to PI (at r2)
-  const localAngle = t * Math.PI;
-  let r;
-  if (eccentricity < 0.001) {
-    // Nearly circular — just lerp the radius
-    r = r1 + (r2 - r1) * t;
-  } else {
-    const p = semiMajor * (1 - eccentricity * eccentricity);
-    // At localAngle=0 we want r=r1, at localAngle=PI we want r=r2
-    // For a Hohmann transfer: periapsis is the smaller radius
-    const cosA = goingInward ? Math.cos(localAngle) : -Math.cos(localAngle);
-    r = p / (1 + eccentricity * cosA);
-  }
-
-  return {
-    x: Math.cos(theta) * r,
-    z: Math.sin(theta) * r,
-    angle: theta,
-    radius: r,
-  };
 }
 
 export function updateShip(time, deltaTime) {
@@ -428,48 +385,115 @@ export function updateShip(time, deltaTime) {
       controls.target.lerp(_origin, 0.05);
 
       if (bt >= 1) {
-        orb.state = 'transfer';
+        // Seed gravity simulation
+        const GM = deriveGMStar();
+        const r1 = orb.transfer.r1;
+        const r2 = orb.transfer.r2;
+        const a = (r1 + r2) / 2;
+        const vTransfer = Math.sqrt(Math.abs(GM * (2 / r1 - 1 / a)));
+
+        const angle = orb.orbitAngle;
+        const shipX = Math.cos(angle) * r1;
+        const shipZ = Math.sin(angle) * r1;
+        // Prograde tangent (counterclockwise)
+        const tangentX = -Math.sin(angle);
+        const tangentZ = Math.cos(angle);
+
         orb.transfer.startTime = time;
-        orb.transfer.startAngle = orb.orbitAngle;
+        orb.transfer.posX = shipX;
+        orb.transfer.posZ = shipZ;
+        orb.transfer.velX = tangentX * vTransfer;
+        orb.transfer.velZ = tangentZ * vTransfer;
+        orb.transfer.GM_star = GM;
+        orb.state = 'transfer';
       }
       break;
     }
 
-    // ── TRANSFER: follow elliptical or slingshot path ──
+    // ── TRANSFER: gravity simulation (Velocity Verlet) ──
     case 'transfer': {
-      const elapsed = time - orb.transfer.startTime;
-      const rawT = Math.min(elapsed / orb.transfer.duration, 1);
-      const t = easeInOutCubic(rawT);
+      const tr = orb.transfer;
+      const gc = sc.gravity;
+      const dt_sim = Math.min(deltaTime, 0.05);
+      const numSteps = Math.ceil(dt_sim / gc.substepDt);
+      const h = dt_sim / numSteps;
 
-      const useSlingshot = !!orb.transfer.slingshot;
-      const evalFn = useSlingshot ? evalSlingshotTransfer : evalTransfer;
-      const p = evalFn(orb.transfer, t);
-      app.shipMesh.position.set(p.x, 0, p.z);
+      let { posX, posZ, velX, velZ } = tr;
+      let simTime = time - dt_sim;
 
-      // Look along tangent (sample slightly ahead)
-      const tNext = Math.min(t + 0.015, 1);
-      const pNext = evalFn(orb.transfer, tNext);
-      _lookAt.set(pNext.x, 0, pNext.z);
-      if (_lookAt.distanceToSquared(app.shipMesh.position) > 0.0001) {
+      for (let step = 0; step < numSteps; step++) {
+        // Acceleration at current position
+        const a1 = computeGravAccel(posX, posZ, tr.GM_star, simTime);
+        const g1 = computeGuidance(posX, posZ, tr, simTime);
+        const ax1 = a1.ax + g1.ax;
+        const az1 = a1.az + g1.az;
+
+        // Update position
+        posX += velX * h + 0.5 * ax1 * h * h;
+        posZ += velZ * h + 0.5 * az1 * h * h;
+
+        // Acceleration at new position
+        const a2 = computeGravAccel(posX, posZ, tr.GM_star, simTime + h);
+        const g2 = computeGuidance(posX, posZ, tr, simTime + h);
+
+        // Update velocity
+        velX += 0.5 * (ax1 + a2.ax + g2.ax) * h;
+        velZ += 0.5 * (az1 + a2.az + g2.az) * h;
+
+        simTime += h;
+      }
+
+      tr.posX = posX;
+      tr.posZ = posZ;
+      tr.velX = velX;
+      tr.velZ = velZ;
+
+      app.shipMesh.position.set(posX, 0, posZ);
+
+      // Face velocity direction
+      const speed = Math.sqrt(velX * velX + velZ * velZ);
+      if (speed > 0.01) {
+        _lookAt.set(posX + velX * 0.5, 0, posZ + velZ * 0.5);
         app.shipMesh.lookAt(_lookAt);
       }
 
-      // Thruster boost near slingshot closest approach
-      let thrusterIntensity = 1;
-      if (useSlingshot && Math.abs(t - 0.5) < 0.08) {
-        thrusterIntensity = sc.slingshotBoost;
+      orb.orbitAngle = Math.atan2(posZ, posX);
+
+      // Thruster intensity scales with planet proximity
+      let thrusterIntensity = 0.5;
+      for (const p of app.systemPlanets) {
+        const pa = p.data.orbitPhase + time * p.data.orbitSpeed;
+        const ppx = Math.cos(pa) * p.data.orbitRadius;
+        const ppz = Math.sin(pa) * p.data.orbitRadius;
+        const dx = posX - ppx, dz = posZ - ppz;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        const influence = p.data.visualSize * 3;
+        if (dist < influence) {
+          thrusterIntensity = Math.max(thrusterIntensity,
+            2 + 3 * (1 - dist / influence));
+        }
       }
       spawnThrusterParticle(app.shipMesh.position, deltaTime, thrusterIntensity);
 
       controls.target.lerp(_origin, 0.05);
 
-      // Track current angle for approach
-      orb.orbitAngle = p.angle;
+      // Arrival detection
+      const r = Math.sqrt(posX * posX + posZ * posZ);
+      const elapsed = time - tr.startTime;
+      const arrivedAtOrbit = tr.goingInward ? (r <= tr.r2) : (r >= tr.r2);
+      const timedOut = elapsed > tr.maxDuration;
 
-      if (rawT >= 1) {
+      if (arrivedAtOrbit || timedOut) {
         orb.state = 'burn_arrive';
         orb.transfer.burnStart = time;
-        orb.orbitRadius = orb.transfer.r2;
+        orb.orbitRadius = tr.r2;
+        // Snap to target orbit radius at current angle
+        const snapAngle = Math.atan2(posZ, posX);
+        app.shipMesh.position.set(
+          Math.cos(snapAngle) * tr.r2, 0, Math.sin(snapAngle) * tr.r2
+        );
+        orb.orbitAngle = snapAngle;
+        orb.orbitSpeed = tr.targetEntry.data.orbitSpeed;
       }
       break;
     }
