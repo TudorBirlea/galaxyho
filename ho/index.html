@@ -12,38 +12,39 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 canvas{display:block}
 
 /* ── HUD ── */
-#hud{position:fixed;top:0;left:0;right:0;padding:20px 28px;display:flex;justify-content:space-between;align-items:center;
-  color:rgba(255,255,255,0.25);font-size:10px;letter-spacing:2.5px;text-transform:uppercase;pointer-events:none;z-index:20}
-#hud-location{font-size:12px;font-weight:500;color:rgba(255,255,255,0.55);letter-spacing:3px}
-#hud-ship{font-size:9px;color:rgba(255,255,255,0.25);letter-spacing:1.5px;margin-top:2px}
+#hud{position:fixed;top:0;left:0;right:0;padding:18px 24px;display:flex;justify-content:space-between;align-items:flex-start;
+  color:rgba(255,255,255,0.25);font-size:11px;letter-spacing:2px;text-transform:uppercase;pointer-events:none;z-index:20}
+#hud-location{font-size:15px;font-weight:500;color:rgba(255,255,255,0.55);letter-spacing:3px}
+#hud-ship{font-size:11px;color:rgba(255,255,255,0.3);letter-spacing:1.5px;margin-top:3px}
 
 /* ── Tooltip ── */
 #tooltip{position:fixed;display:none;padding:18px 22px;background:rgba(10,12,20,0.72);
   border:1px solid rgba(255,255,255,0.07);border-radius:14px;
   backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
-  color:rgba(255,255,255,0.65);font-size:13px;z-index:30;pointer-events:auto;min-width:190px;
+  color:rgba(255,255,255,0.65);font-size:13px;z-index:30;pointer-events:auto;min-width:210px;
   box-shadow:0 8px 32px rgba(0,0,0,0.4)}
-#tt-name{font-size:15px;font-weight:600;color:rgba(255,255,255,0.9);margin-bottom:2px}
-#tt-class{font-size:10px;color:rgba(255,255,255,0.3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase}
-#tt-planets{font-size:12px;color:rgba(255,255,255,0.45);margin-bottom:4px}
-#tt-belt{font-size:10px;color:rgba(200,170,100,0.45);margin-bottom:4px;letter-spacing:0.5px}
-#tt-comets{font-size:10px;color:rgba(120,170,255,0.45);margin-bottom:4px;letter-spacing:0.5px}
-#tt-dist{font-size:11px;color:rgba(255,255,255,0.35);margin-bottom:4px;letter-spacing:0.5px}
-#tt-status{font-size:10px;margin-bottom:14px;letter-spacing:1px;text-transform:uppercase}
-.tt-btn{display:block;width:100%;padding:9px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);
-  color:rgba(255,255,255,0.45);font-size:10px;border-radius:8px;cursor:pointer;letter-spacing:2px;text-transform:uppercase;
+#tt-name{font-size:16px;font-weight:600;color:rgba(255,255,255,0.9);margin-bottom:3px}
+#tt-class{font-size:11px;color:rgba(255,255,255,0.35);margin-bottom:8px;letter-spacing:1px;text-transform:uppercase}
+#tt-planets{font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:5px}
+#tt-belt{font-size:11px;color:rgba(200,170,100,0.5);margin-bottom:5px;letter-spacing:0.5px}
+#tt-comets{font-size:11px;color:rgba(120,170,255,0.5);margin-bottom:5px;letter-spacing:0.5px}
+#tt-dist{font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:5px;letter-spacing:0.5px}
+#tt-status{font-size:11px;margin-bottom:14px;letter-spacing:1px;text-transform:uppercase}
+.tt-btn{display:block;width:100%;padding:11px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);
+  color:rgba(255,255,255,0.5);font-size:11px;border-radius:8px;cursor:pointer;letter-spacing:2px;text-transform:uppercase;
   transition:all 0.25s;font-family:inherit}
 .tt-btn:hover{background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.8)}
+.tt-btn+.tt-btn{margin-top:6px}
 
 /* ── Back Button ── */
-#back-btn{position:fixed;top:18px;left:20px;padding:8px 16px;background:rgba(10,12,20,0.55);
-  border:1px solid rgba(255,255,255,0.07);border-radius:10px;color:rgba(255,255,255,0.35);font-size:11px;
+#back-btn{position:fixed;top:18px;left:20px;padding:10px 18px;background:rgba(10,12,20,0.55);
+  border:1px solid rgba(255,255,255,0.07);border-radius:10px;color:rgba(255,255,255,0.4);font-size:12px;
   cursor:pointer;z-index:30;display:none;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   transition:all 0.25s;letter-spacing:1.5px;text-transform:uppercase;font-family:inherit}
 #back-btn:hover{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.65)}
 
 /* ── Info Card ── */
-#info-card{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);width:100%;max-width:400px;
+#info-card{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);width:100%;max-width:420px;
   padding:24px 28px 32px;background:rgba(10,12,20,0.78);
   border:1px solid rgba(255,255,255,0.06);border-bottom:none;
   border-radius:20px 20px 0 0;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
@@ -51,13 +52,13 @@ canvas{display:block}
   box-shadow:0 -8px 40px rgba(0,0,0,0.4)}
 #info-card.visible{transform:translateX(-50%) translateY(0)}
 #ic-close{position:absolute;top:16px;right:20px;background:none;border:none;color:rgba(255,255,255,0.18);
-  font-size:20px;cursor:pointer;padding:4px 8px;transition:color 0.2s}
+  font-size:22px;cursor:pointer;padding:6px 10px;transition:color 0.2s}
 #ic-close:hover{color:rgba(255,255,255,0.45)}
 #ic-header{display:flex;align-items:center;gap:16px;margin-bottom:16px}
-#ic-photo{width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;
+#ic-photo{width:60px;height:60px;border-radius:50%;object-fit:cover;flex-shrink:0;
   border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03)}
-#ic-name{font-size:17px;font-weight:600;color:rgba(255,255,255,0.9);margin-bottom:4px}
-#ic-type{display:inline-block;padding:3px 10px;border-radius:20px;font-size:9px;letter-spacing:1.2px;
+#ic-name{font-size:18px;font-weight:600;color:rgba(255,255,255,0.9);margin-bottom:5px}
+#ic-type{display:inline-block;padding:4px 12px;border-radius:20px;font-size:10px;letter-spacing:1.2px;
   font-weight:500;text-transform:uppercase}
 
 .type-terran{background:rgba(80,200,120,0.10);color:rgba(80,200,120,0.65)}
@@ -68,49 +69,51 @@ canvas{display:block}
 .type-ocean{background:rgba(60,130,220,0.10);color:rgba(60,130,220,0.65)}
 .type-water{background:rgba(80,160,240,0.10);color:rgba(80,160,240,0.65)}
 
-.ic-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:12px}
-.ic-label{width:78px;color:rgba(255,255,255,0.25);flex-shrink:0;font-size:10px;letter-spacing:1px;text-transform:uppercase}
-.ic-bar{flex:1;height:2px;background:rgba(255,255,255,0.06);border-radius:1px;overflow:hidden}
-.ic-fill{height:100%;border-radius:1px;transition:width 0.5s cubic-bezier(0.16,1,0.3,1)}
-.ic-value{width:40px;text-align:right;font-weight:500;color:rgba(255,255,255,0.45);font-size:12px;font-variant-numeric:tabular-nums}
-.ic-atm{font-size:11px;color:rgba(255,255,255,0.25);margin-top:4px;margin-bottom:4px;letter-spacing:0.5px}
-#ic-special{margin-top:14px;padding:10px 14px;background:rgba(255,200,60,0.05);border:1px solid rgba(255,200,60,0.08);
-  border-radius:8px;color:rgba(255,200,60,0.55);font-size:11px;display:none;letter-spacing:0.3px}
+.ic-row{display:flex;align-items:center;gap:10px;margin-bottom:11px;font-size:13px}
+.ic-label{width:84px;color:rgba(255,255,255,0.3);flex-shrink:0;font-size:11px;letter-spacing:1px;text-transform:uppercase}
+.ic-bar{flex:1;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
+.ic-fill{height:100%;border-radius:2px;transition:width 0.5s cubic-bezier(0.16,1,0.3,1)}
+.ic-value{width:44px;text-align:right;font-weight:500;color:rgba(255,255,255,0.5);font-size:13px;font-variant-numeric:tabular-nums}
+.ic-atm{font-size:12px;color:rgba(255,255,255,0.3);margin-top:6px;margin-bottom:4px;letter-spacing:0.5px}
+#ic-special{margin-top:14px;padding:11px 14px;background:rgba(255,200,60,0.05);border:1px solid rgba(255,200,60,0.08);
+  border-radius:8px;color:rgba(255,200,60,0.55);font-size:12px;display:none;letter-spacing:0.3px}
 
-/* ── Journal Button ── */
-#journal-btn{position:fixed;bottom:20px;right:20px;padding:8px 16px;background:rgba(10,12,20,0.55);
-  border:1px solid rgba(255,255,255,0.07);border-radius:10px;color:rgba(255,255,255,0.35);font-size:10px;
-  cursor:pointer;z-index:30;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+/* ── Bottom Bar (buttons sit in a row above minimap) ── */
+#bottom-bar{position:fixed;bottom:20px;left:0;right:0;display:flex;justify-content:center;gap:10px;z-index:30;pointer-events:none}
+#bottom-bar>*{pointer-events:auto}
+.bottom-btn{padding:10px 18px;background:rgba(10,12,20,0.55);
+  border:1px solid rgba(255,255,255,0.07);border-radius:10px;color:rgba(255,255,255,0.4);font-size:11px;
+  cursor:pointer;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   transition:all 0.25s;letter-spacing:1.5px;text-transform:uppercase;font-family:inherit}
-#journal-btn:hover{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.65)}
+.bottom-btn:hover{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.65)}
 
-#journal-notice{position:fixed;bottom:52px;right:20px;padding:4px 12px;background:rgba(255,200,60,0.08);
-  border:1px solid rgba(255,200,60,0.12);border-radius:8px;color:rgba(255,200,60,0.5);font-size:9px;
+#journal-notice{position:fixed;bottom:56px;left:50%;transform:translateX(-50%);padding:5px 14px;background:rgba(255,200,60,0.08);
+  border:1px solid rgba(255,200,60,0.12);border-radius:8px;color:rgba(255,200,60,0.5);font-size:10px;
   letter-spacing:1px;text-transform:uppercase;z-index:30;pointer-events:none;
   opacity:0;transition:opacity 0.5s}
 
 /* ── Journal Panel ── */
-#journal-panel{position:fixed;top:0;right:0;bottom:0;width:320px;background:rgba(10,12,20,0.82);
+#journal-panel{position:fixed;top:0;right:0;bottom:0;width:340px;max-width:85vw;background:rgba(10,12,20,0.82);
   border-left:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   z-index:35;transform:translateX(100%);transition:transform 0.35s cubic-bezier(0.16,1,0.3,1);
   display:flex;flex-direction:column}
 #journal-panel.visible{transform:translateX(0)}
-#journal-header{display:flex;justify-content:space-between;align-items:center;padding:20px 22px 16px;
+#journal-header{display:flex;justify-content:space-between;align-items:center;padding:22px 22px 16px;
   border-bottom:1px solid rgba(255,255,255,0.06)}
-#journal-header span{font-size:12px;font-weight:500;color:rgba(255,255,255,0.5);letter-spacing:2px;text-transform:uppercase}
-#journal-close{background:none;border:none;color:rgba(255,255,255,0.18);font-size:18px;cursor:pointer;padding:4px 8px;transition:color 0.2s}
+#journal-header span{font-size:13px;font-weight:500;color:rgba(255,255,255,0.5);letter-spacing:2px;text-transform:uppercase}
+#journal-close{background:none;border:none;color:rgba(255,255,255,0.18);font-size:20px;cursor:pointer;padding:6px 10px;transition:color 0.2s}
 #journal-close:hover{color:rgba(255,255,255,0.45)}
 #journal-entries{flex:1;overflow-y:auto;padding:12px 16px}
 #journal-entries::-webkit-scrollbar{width:4px}
 #journal-entries::-webkit-scrollbar-track{background:transparent}
 #journal-entries::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:2px}
-.journal-entry{display:flex;align-items:flex-start;gap:10px;padding:10px 6px;border-bottom:1px solid rgba(255,255,255,0.03)}
-.je-icon{font-size:12px;color:rgba(255,255,255,0.3);flex-shrink:0;width:16px;text-align:center;margin-top:1px}
-.je-text{flex:1;font-size:11px;color:rgba(255,255,255,0.45);line-height:1.5;letter-spacing:0.3px}
-.je-time{font-size:9px;color:rgba(255,255,255,0.15);flex-shrink:0;margin-top:2px;font-variant-numeric:tabular-nums}
+.journal-entry{display:flex;align-items:flex-start;gap:10px;padding:11px 6px;border-bottom:1px solid rgba(255,255,255,0.03)}
+.je-icon{font-size:13px;color:rgba(255,255,255,0.3);flex-shrink:0;width:18px;text-align:center;margin-top:1px}
+.je-text{flex:1;font-size:12px;color:rgba(255,255,255,0.5);line-height:1.55;letter-spacing:0.3px}
+.je-time{font-size:10px;color:rgba(255,255,255,0.18);flex-shrink:0;margin-top:2px;font-variant-numeric:tabular-nums}
 
 /* ── Minimap ── */
-#minimap-wrap{position:fixed;bottom:20px;left:20px;width:150px;height:150px;background:rgba(10,12,20,0.55);
+#minimap-wrap{position:fixed;bottom:64px;left:20px;width:140px;height:140px;background:rgba(10,12,20,0.55);
   border:1px solid rgba(255,255,255,0.06);border-radius:12px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   z-index:25;overflow:hidden}
 #minimap{display:block;width:100%;height:100%}
@@ -118,18 +121,96 @@ canvas{display:block}
 /* ── Overlay & Lock ── */
 #overlay{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:40;transition:opacity 0.4s}
 
-#lock-msg{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);padding:10px 22px;
+#lock-msg{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);padding:11px 24px;
   background:rgba(10,12,20,0.75);border:1px solid rgba(255,255,255,0.06);border-radius:10px;
-  color:rgba(255,255,255,0.3);font-size:11px;z-index:25;display:none;
+  color:rgba(255,255,255,0.35);font-size:12px;z-index:25;display:none;
   backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);white-space:nowrap;letter-spacing:0.5px}
 #tune-panel{position:fixed;bottom:20px;right:20px;padding:12px 16px;
   background:rgba(10,12,20,0.8);border:1px solid rgba(255,255,255,0.08);border-radius:8px;
   z-index:20;display:none;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);min-width:200px}
-.tune-title{font-size:9px;color:rgba(255,255,255,0.25);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
-.tune-row{display:flex;align-items:center;gap:6px;margin-bottom:5px}
-.tune-row label{font-size:10px;color:rgba(255,255,255,0.35);min-width:72px;letter-spacing:0.5px}
-.tune-row input[type=range]{width:80px;accent-color:rgba(100,200,150,0.5);height:2px}
-.tune-row span{font-size:10px;color:rgba(255,200,150,0.6);min-width:28px;text-align:right}
+.tune-title{font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
+.tune-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.tune-row label{font-size:11px;color:rgba(255,255,255,0.35);min-width:80px;letter-spacing:0.5px}
+.tune-row input[type=range]{width:80px;accent-color:rgba(100,200,150,0.5);height:3px}
+.tune-row span{font-size:11px;color:rgba(255,200,150,0.6);min-width:30px;text-align:right}
+
+/* ── v5 Fuel Gauge ── */
+#hud-resources{display:flex;align-items:center;gap:16px;margin-top:6px}
+#hud-fuel-wrap{display:flex;align-items:center;gap:7px}
+#hud-fuel-label{font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:1px;text-transform:uppercase}
+#hud-fuel-bar{width:80px;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
+#hud-fuel-fill{height:100%;border-radius:2px;transition:width 0.4s cubic-bezier(0.16,1,0.3,1),background 0.4s}
+#hud-fuel-val{font-size:11px;color:rgba(255,255,255,0.4);font-variant-numeric:tabular-nums;min-width:30px}
+@keyframes fuel-pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+#hud-fuel-wrap.low #hud-fuel-fill{animation:fuel-pulse 1s ease-in-out infinite}
+#hud-fuel-wrap.low #hud-fuel-val{color:rgba(220,80,60,0.7)}
+#hud-data{font-size:11px;color:rgba(140,200,240,0.45);letter-spacing:1px;font-variant-numeric:tabular-nums;
+  transition:color 0.2s}
+#hud-data.flash{color:rgba(140,200,240,0.9)}
+
+/* ── v5 Event Card ── */
+#event-card{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.96);width:92%;max-width:400px;
+  padding:30px 28px 26px;background:rgba(10,12,20,0.88);border:1px solid rgba(255,255,255,0.07);border-radius:16px;
+  backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);color:rgba(255,255,255,0.65);z-index:50;
+  opacity:0;pointer-events:none;transition:opacity 0.3s,transform 0.3s cubic-bezier(0.16,1,0.3,1);
+  box-shadow:0 12px 48px rgba(0,0,0,0.5)}
+#event-card.visible{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+#ec-title{font-size:16px;font-weight:600;color:rgba(255,255,255,0.9);margin-bottom:14px;letter-spacing:1px;text-transform:uppercase}
+#ec-description{font-size:13px;color:rgba(255,255,255,0.5);line-height:1.7;margin-bottom:22px;letter-spacing:0.3px}
+.ec-choice{display:flex;justify-content:space-between;align-items:center;width:100%;padding:13px 16px;
+  background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:10px;
+  color:rgba(255,255,255,0.6);font-size:13px;cursor:pointer;letter-spacing:0.8px;font-family:inherit;
+  transition:all 0.2s;margin-bottom:8px}
+.ec-choice:hover{background:rgba(255,255,255,0.10);color:rgba(255,255,255,0.85)}
+.ec-risk{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;padding:3px 10px;border-radius:5px;flex-shrink:0;margin-left:12px}
+.ec-risk.safe{color:rgba(80,200,140,0.65);background:rgba(80,200,140,0.08)}
+.ec-risk.low{color:rgba(100,200,220,0.65);background:rgba(100,200,220,0.08)}
+.ec-risk.medium{color:rgba(220,180,60,0.65);background:rgba(220,180,60,0.08)}
+.ec-risk.high{color:rgba(220,120,40,0.65);background:rgba(220,120,40,0.08)}
+.ec-risk.extreme{color:rgba(220,60,60,0.65);background:rgba(220,60,60,0.08)}
+
+/* ── v5 Outcome Overlay ── */
+#outcome-overlay{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:85%;max-width:360px;
+  padding:28px;background:rgba(10,12,20,0.85);border:1px solid rgba(255,255,255,0.07);border-radius:14px;
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);color:rgba(255,255,255,0.65);z-index:52;
+  opacity:0;pointer-events:none;transition:opacity 0.3s;text-align:center;
+  box-shadow:0 8px 36px rgba(0,0,0,0.4)}
+#outcome-overlay.visible{opacity:1;pointer-events:auto}
+#oc-result{font-size:15px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px}
+#oc-result.success{color:rgba(80,200,140,0.85)}
+#oc-result.failure{color:rgba(220,80,60,0.85)}
+#oc-rewards{font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:12px;line-height:1.8}
+.oc-fuel-gain{color:rgba(80,200,140,0.65)}
+.oc-fuel-loss{color:rgba(220,80,60,0.65)}
+.oc-data-gain{color:rgba(140,200,240,0.65)}
+#oc-lore{font-size:12px;color:rgba(255,200,60,0.5);font-style:italic;line-height:1.6;margin-top:8px}
+
+/* ── v5 Upgrade Panel ── */
+#upgrade-panel{position:fixed;inset:0;background:rgba(6,8,16,0.92);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
+  z-index:45;opacity:0;pointer-events:none;transition:opacity 0.3s;display:flex;flex-direction:column;align-items:center;overflow-y:auto}
+#upgrade-panel.visible{opacity:1;pointer-events:auto}
+#upgrade-header{width:100%;max-width:960px;display:flex;justify-content:space-between;align-items:center;padding:28px 28px 18px}
+#upgrade-header span{font-size:15px;font-weight:500;color:rgba(255,255,255,0.55);letter-spacing:3px;text-transform:uppercase}
+#upgrade-close{background:none;border:none;color:rgba(255,255,255,0.2);font-size:24px;cursor:pointer;padding:6px 12px;transition:color 0.2s}
+#upgrade-close:hover{color:rgba(255,255,255,0.5)}
+#upgrade-data-display{font-size:13px;color:rgba(140,200,240,0.5);letter-spacing:1px;margin-right:16px}
+#upgrade-grid{width:100%;max-width:960px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:0 28px 28px}
+@media(max-width:700px){#upgrade-grid{grid-template-columns:1fr;max-width:380px}}
+.ug-category{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:12px;padding:18px 16px}
+.ug-cat-title{font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);letter-spacing:2px;text-transform:uppercase;margin-bottom:14px;
+  display:flex;align-items:center;gap:8px}
+.ug-cat-icon{font-size:14px;color:rgba(255,255,255,0.25)}
+.ug-tier{padding:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);border-radius:8px;margin-bottom:10px}
+.ug-tier-name{font-size:13px;color:rgba(255,255,255,0.55);margin-bottom:5px;font-weight:500}
+.ug-tier-desc{font-size:11px;color:rgba(255,255,255,0.3);line-height:1.55;margin-bottom:8px}
+.ug-tier-cost{font-size:11px;color:rgba(140,200,240,0.45);letter-spacing:0.5px;margin-bottom:10px}
+.ug-buy-btn{padding:8px 16px;background:rgba(140,200,240,0.08);border:1px solid rgba(140,200,240,0.15);border-radius:6px;
+  color:rgba(140,200,240,0.6);font-size:10px;cursor:pointer;letter-spacing:1.5px;text-transform:uppercase;font-family:inherit;
+  transition:all 0.2s}
+.ug-buy-btn:hover{background:rgba(140,200,240,0.15);color:rgba(140,200,240,0.9)}
+.ug-buy-btn:disabled{opacity:0.3;cursor:default}
+.ug-owned{font-size:10px;color:rgba(80,200,140,0.55);letter-spacing:1.5px;text-transform:uppercase}
+.ug-locked{font-size:10px;color:rgba(255,255,255,0.18);letter-spacing:1.5px;text-transform:uppercase}
 </style>
 </head>
 <body>
@@ -140,8 +221,16 @@ canvas{display:block}
     <div id="hud-ship"></div>
   </div>
   <div style="text-align:right">
-    <span id="hud-progress">0/100 explored</span>
-    <div id="hud-version" style="font-size:8px;color:rgba(255,255,255,0.12);margin-top:2px;letter-spacing:1px"></div>
+    <span id="hud-progress" style="font-size:11px">0/100 explored</span>
+    <div id="hud-resources">
+      <div id="hud-fuel-wrap">
+        <span id="hud-fuel-label">Fuel</span>
+        <div id="hud-fuel-bar"><div id="hud-fuel-fill"></div></div>
+        <span id="hud-fuel-val">100</span>
+      </div>
+      <span id="hud-data">Data: 0</span>
+    </div>
+    <div id="hud-version" style="font-size:9px;color:rgba(255,255,255,0.14);margin-top:4px;letter-spacing:1px"></div>
   </div>
 </div>
 
@@ -172,7 +261,10 @@ canvas{display:block}
   <div id="ic-special"></div>
 </div>
 
-<button id="journal-btn">Log</button>
+<div id="bottom-bar">
+  <button id="upgrade-btn" class="bottom-btn">Upgrades</button>
+  <button id="journal-btn" class="bottom-btn">Log</button>
+</div>
 <div id="journal-notice">New entry</div>
 
 <div id="journal-panel">
@@ -194,6 +286,29 @@ canvas{display:block}
   <div class="tune-row"><label>Stars Boost</label><input type="range" id="tune-stars" min="0.5" max="5" step="0.25" value="2.5"><span id="tune-stars-val">2.5</span></div>
 </div>
 
+<div id="event-card">
+  <div id="ec-title"></div>
+  <div id="ec-description"></div>
+  <div id="ec-choices"></div>
+</div>
+
+<div id="outcome-overlay">
+  <div id="oc-result"></div>
+  <div id="oc-rewards"></div>
+  <div id="oc-lore"></div>
+</div>
+
+<div id="upgrade-panel">
+  <div id="upgrade-header">
+    <span>Ship Upgrades</span>
+    <div style="display:flex;align-items:center">
+      <span id="upgrade-data-display"></span>
+      <button id="upgrade-close">&times;</button>
+    </div>
+  </div>
+  <div id="upgrade-grid"></div>
+</div>
+
 <div id="overlay"></div>
 <div id="lock-msg">Explore more stars to unlock</div>
 
@@ -204,6 +319,6 @@ canvas{display:block}
 }}
 </script>
 
-<script type="module" src="js/main.js?v=3.7"></script>
+<script type="module" src="js/main.js?v=5.0"></script>
 </body>
 </html>

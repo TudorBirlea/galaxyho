@@ -1,15 +1,16 @@
 # Galaxy Ho! — Project Journal
 
 ## What Is This
-A 3D space exploration game built with Three.js. The player discovers a procedurally generated galaxy cluster by cluster, zooming into star systems and inspecting individual planets. Pure exploration — no economy, combat, or turns.
+A 3D space exploration game built with Three.js. The player discovers a procedurally generated galaxy cluster by cluster, flying a ship between star systems and scanning planets for fuel and data. Features procedural events with meaningful choices and a 12-upgrade progression tree.
 
-## Current Version: v3.0 "Exploration"
+## Current Version: v5.0 "Gameplay"
 - **Galaxy View**: ~100 stars with parallax background starfield (3 layers), volumetric nebulae (3 layers per cloud, billboarded), bloom tint pass preserving spectral colors, dark dust lanes (FBM noise, NormalBlending), pulsating variable stars (~4%), stellar remnants (black holes, neutron stars, white dwarfs), particle stream warp trails on visited connections, asteroid belt & comet activity indicators in star tooltips
-- **System View**: Ray-marched atmospheric scattering on planets, planet shadow on rings, configurable star surface rotation, decorative moons orbiting planets, enhanced asteroid belts (500 Points with Keplerian orbits, irregular rocky shapes, 3 composition types, phase-angle lighting, Gaussian vertical distribution, dust glow layer, large tumbling rocks, rare collision bursts), comets with dual tails (ion + dust), soft sprite coma, activity scaling, sparkle, orbit paths; black hole gravitational lensing shader, neutron star rotating beam cones, white dwarf rendering
+- **System View**: Ray-marched atmospheric scattering on planets, planet shadow on rings, configurable star surface rotation, decorative moons orbiting planets, enhanced asteroid belts, comets with dual tails; black hole gravitational lensing shader, neutron star rotating beam cones, white dwarf rendering; **flyable ship** (ConeGeometry hull + wings + engine glow, quadratic Bezier arc flight, 60-particle thruster trail, camera follow), **event indicator sprites** (pulsing gold dots when Event Scanner upgrade active)
+- **Gameplay**: Fuel resource (consumed on star jumps, collected from planets by type), Data resource (earned from scanning + events, spent on upgrades), 37 procedural event templates (12 universal + per-type, seeded per planet, 2-3 choices with risk/reward), 12-upgrade tree (4 categories × 3 tiers: Engines, Sensors, Fuel Systems, Communications), emergency jump to home star when stranded
 - **Post-processing**: Film grain overlay, vignette, bloom tint (galaxy view), UnrealBloomPass
 - **Planet Info Cards**: Slide-up panel with type, size, habitability, metals, atmosphere, specials
 - **Progressive Unlock**: Visit 3 stars in a cluster → adjacent clusters unlock
-- **Persistence**: LocalStorage saves visited stars and unlocked clusters
+- **Persistence**: LocalStorage saves visited stars, unlocked clusters, fuel, data, upgrades, resolved events (with migration for old saves)
 - **Touch-first**: Drag to orbit, pinch to zoom, tap to select, double-tap to enter
 - **Version**: Displayed in HUD (top-right), set via `VERSION` constant in config.js
 
@@ -23,19 +24,23 @@ A 3D space exploration game built with Three.js. The player discovers a procedur
 ## File Structure
 ```
 ho/index.html          — The game (entry point, HTML + CSS)
-ho/js/main.js          — Init, game loop, transitions, journal
-ho/js/config.js        — All tuning constants (spectral, planet types, bloom, camera)
+ho/js/main.js          — Init, game loop, transitions, journal, event/upgrade wiring
+ho/js/config.js        — All tuning constants (spectral, planet types, bloom, camera, gameplay, ship)
 ho/js/data.js          — Procedural galaxy & planet generation
 ho/js/shaders.js       — All GLSL shaders (star, planet, ring, galaxy, nebula, ship)
-ho/js/system-view.js   — System view: build, update, depth sphere, planet snapshots
+ho/js/system-view.js   — System view: build, update, depth sphere, planet snapshots, event indicators
 ho/js/galaxy-view.js   — Galaxy view: star sprites, connections, nebulae
 ho/js/engine.js        — Three.js setup: renderer, camera, controls, bloom, scene groups
-ho/js/input.js         — Mouse/touch/keyboard input handling
-ho/js/ui.js            — HUD, tooltips, info cards, journal panel
+ho/js/input.js         — Mouse/touch/keyboard input, fly-then-scan flow
+ho/js/ui.js            — HUD, tooltips, info cards, journal, fuel gauge, event cards, upgrade panel
 ho/js/minimap.js       — Galaxy minimap overlay
-ho/js/state.js         — Save/load state to LocalStorage
+ho/js/state.js         — Save/load state to LocalStorage (fuel, data, upgrades, events)
 ho/js/app.js           — Shared app state singleton
 ho/js/utils.js         — mulberry32 PRNG, easing functions
+ho/js/gameplay.js      — Fuel/data resource logic, upgrade effects, solar regen
+ho/js/ship.js          — Ship mesh, Bezier flight, thruster particles, camera follow
+ho/js/events.js        — 37 event templates, seeded generation, choice resolution
+ho/js/upgrades.js      — Upgrade tree (4×3), purchase logic, effect definitions
 ho/textures/           — Planet equirectangular textures (16 maps)
 _extras/               — Reference files, backups, experiments (gitignored)
 .github/workflows/     — GitHub Pages deploy workflow
@@ -86,6 +91,24 @@ _extras/               — Reference files, backups, experiments (gitignored)
 - Stellar remnants: black holes (dedicated BLACK_HOLE_FRAG with Schwarzschild geodesic ray tracing, Velocity Verlet integration, conserved angular momentum h², Novikov-Thorne temperature profile, blackbody color ramp, Doppler beaming on temperature, gravitational redshift, higher-order Einstein ring images via multi-crossing tracking, Einstein ring brightening via dFdx/dFdy, improved adaptive stepping near photon sphere), neutron stars (STAR_FRAG with extreme params + rotating ConeGeometry beams), white dwarfs (STAR_FRAG with small radius + high temp)
 - Remnant galaxy rendering: aRemnantType attribute on galaxy Points, black holes rendered with dark center + orange accretion ring in fragment shader
 - Font: SF Mono / Fira Code / Consolas monospace (sci-fi terminal aesthetic)
+- Ship: THREE.Group (ConeGeometry hull + PlaneGeometry wings + Sprite engine glow), scaled by CONFIG.ship.meshScale
+  - Flight: quadratic Bezier arc (start → control point above midpoint → target), duration scales with distance (0.8–3.0s), easeInOutCubic
+  - Thruster trail: 60-particle Points with age/alpha attributes, AdditiveBlending, spawns during flight, fades when idle
+  - Camera follow: controls.target lerps toward ship position during flight (loose follow, OrbitControls stays active)
+  - Docked orbit: ship follows planet position when parked at a planet
+- Events: 37 templates (12 universal + 3-5 per planet type), seeded RNG per planet (hashInt(seed, 9999)), ~70% chance
+  - Template structure: title, description ({planetName}/{starName} interpolation), planetTypes filter, rarity weighting (common=6, uncommon=3, rare=1), 2-3 choices with risk/successRate/outcome ranges
+  - Resolution: seeded roll against successRate (modified by Deep Scanner +10%), interpolated reward ranges
+  - Deterministic: same planet always generates same event, same choice always gives same outcome
+  - Event indicators: pulsing gold Sprite dots above unscanned planets (visible when Event Scanner upgrade purchased)
+- Upgrades: 4 categories × 3 sequential tiers (must own tier N-1 to buy tier N), currency is Data
+  - Engines: Fuel Efficiency (-25% cost) → Extended Range (2-hop jumps) → Warp Mk II (-50% cost + faster flight)
+  - Sensors: Event Scanner (see indicators) → Deep Scanner (+10% success) → Orbital Scan (scan without flying)
+  - Fuel Systems: Tank Expansion (+50% capacity) → Fuel Harvester (+50% yield) → Solar Collector (passive regen)
+  - Communications: Diplomacy Suite (extra choices) → Trade Protocols (+30% data) → Beacon Network (reveal 2-hop stars)
+- Fuel economy: distance_ly × 3.5 × fuelCostMult, planet yields vary by type (gas_giant highest, lava lowest)
+- Emergency jump: free teleport to home star (star 0) when fuel insufficient for any reachable jump
+- Glassmorphism UI: rgba backgrounds with backdrop-filter blur for event cards, upgrade panel, outcome overlay
 
 ## Spectral Classes & Temperatures
 | Class | Temp Range | Color | Game Probability |
@@ -125,3 +148,4 @@ terran, desert, ice, gas_giant, lava, ocean, water — hybrid texture-mapped wit
 - **v3.9.2**: Asteroid belt chance raised to 25%, frustumCulled fix for belt particles disappearing when zoomed in
 - **v3.9.1**: Galaxy tooltip — asteroid belt presence shown in star detail tooltip (pre-computed during galaxy generation, gold-colored indicator)
 - **v3.9**: Asteroid belt overhaul — 8 improvements: Keplerian per-particle orbital speeds (inner faster), irregular rocky shapes (4-lobe angular sine distortion in fragment shader), Gaussian vertical distribution (CLT clustering near midplane), 3 composition color types (silicate/carbonaceous/metallic), phase-angle star lighting, additive dust glow layer (RingGeometry + noise shader), 4 large tumbling rocks (IcosahedronGeometry + vertex displacement), rare collision dust bursts (~12s interval, 25-particle expanding puffs)
+- **v5.0**: Gameplay update — full gameplay loop added: flyable ship in system view (Bezier arc flight, thruster particles, camera follow), fuel resource (consumed on star jumps, collected from planets by type), data resource (earned from scanning + events, spent on upgrades), 37 procedural event templates (12 universal + per-type, seeded per planet, 2-3 risk/reward choices), 12-upgrade tree (Engines/Sensors/Fuel Systems/Communications × 3 tiers), emergency jump to home star, event indicator sprites, glassmorphism UI (fuel gauge, data counter, event cards, outcome overlays, upgrade panel); 4 new modules (gameplay.js, ship.js, events.js, upgrades.js), state migration for old saves

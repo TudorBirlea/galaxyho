@@ -1,5 +1,6 @@
-import { CONFIG, VERSION } from './config.js?v=3.7';
-import { app } from './app.js?v=3.7';
+import { CONFIG, VERSION } from './config.js?v=5.0';
+import { app } from './app.js?v=5.0';
+import { getMaxFuel, getUpgradeEffects, calculateJumpFuelCost } from './gameplay.js?v=5.0';
 
 const tooltipEl = document.getElementById('tooltip');
 const ttName = document.getElementById('tt-name');
@@ -19,6 +20,24 @@ const hudShip = document.getElementById('hud-ship');
 const hudProgress = document.getElementById('hud-progress');
 export const overlay = document.getElementById('overlay');
 const lockMsg = document.getElementById('lock-msg');
+// v5 gameplay UI elements
+const hudFuelWrap = document.getElementById('hud-fuel-wrap');
+const hudFuelFill = document.getElementById('hud-fuel-fill');
+const hudFuelVal = document.getElementById('hud-fuel-val');
+const hudDataEl = document.getElementById('hud-data');
+const eventCard = document.getElementById('event-card');
+const ecTitle = document.getElementById('ec-title');
+const ecDescription = document.getElementById('ec-description');
+const ecChoices = document.getElementById('ec-choices');
+const outcomeOverlay = document.getElementById('outcome-overlay');
+const ocResult = document.getElementById('oc-result');
+const ocRewards = document.getElementById('oc-rewards');
+const ocLore = document.getElementById('oc-lore');
+const upgradePanel = document.getElementById('upgrade-panel');
+const upgradeGrid = document.getElementById('upgrade-grid');
+const upgradeDataDisplay = document.getElementById('upgrade-data-display');
+export const upgradeBtn = document.getElementById('upgrade-btn');
+export const upgradeClose = document.getElementById('upgrade-close');
 export const journalBtn = document.getElementById('journal-btn');
 export const journalClose = document.getElementById('journal-close');
 const journalPanel = document.getElementById('journal-panel');
@@ -51,16 +70,28 @@ export function showTooltip(star, screenX, screenY, distance, isShipHere, isVisi
     ttEnter.style.display = 'block';
     ttJump.style.display = 'none';
   } else {
+    const fuelCost = app.state ? calculateJumpFuelCost(app.galaxy.stars[app.state.shipStarId], star, app.state) : 0;
+    const canAfford = app.state ? app.state.fuel >= fuelCost : true;
     ttDist.textContent = `${Math.round(distance * 10) / 10} ly`;
     ttStatus.textContent = isVisited ? 'Visited' : 'Unexplored';
     ttStatus.style.color = isVisited ? 'rgba(100,180,220,0.5)' : 'rgba(255,255,255,0.3)';
     ttEnter.style.display = 'none';
     ttJump.style.display = 'block';
-    ttJump.textContent = `Jump (${Math.round(distance * 10) / 10} ly) →`;
+    if (canAfford) {
+      ttJump.textContent = `Jump (${fuelCost} fuel) →`;
+      ttJump.style.color = '';
+    } else if (star.id === 0) {
+      // Emergency jump home is always available
+      ttJump.textContent = 'Emergency jump (free) →';
+      ttJump.style.color = 'rgba(220,180,60,0.6)';
+    } else {
+      ttJump.textContent = `Need ${fuelCost} fuel`;
+      ttJump.style.color = 'rgba(220,80,60,0.6)';
+    }
   }
 
   tooltipEl.style.display = 'block';
-  const tw = 210, th2 = 180;
+  const tw = 230, th2 = 200;
   let x = screenX + 20, y = screenY - 30;
   if (x + tw > window.innerWidth) x = screenX - tw - 20;
   if (y + th2 > window.innerHeight) y = window.innerHeight - th2 - 10;
@@ -106,9 +137,13 @@ export function updateHUD(galaxy, state) {
     hudShip.textContent = `Docked at ${shipStar.name}`;
   }
   if (hudVersion) hudVersion.textContent = `v${VERSION}`;
+  updateFuelGauge(state);
+  updateDataDisplay(state);
 }
 
-export function showLockMessage() {
+export function showLockMessage(msg) {
+  if (msg) lockMsg.textContent = msg;
+  else lockMsg.textContent = 'Explore more stars to unlock';
   lockMsg.style.display = 'block';
   setTimeout(() => { lockMsg.style.display = 'none'; }, 2500);
 }
@@ -137,7 +172,8 @@ export function renderJournal(journal, galaxy) {
       }
       case 'jump': {
         const toStar = galaxy.stars[e.toStarId];
-        icon = '→'; text = `Jumped to ${toStar ? toStar.name : 'Unknown'} (${e.distance} ly)`;
+        const fuelNote = e.fuelCost ? ` · ${e.fuelCost} fuel` : '';
+        icon = '→'; text = `Jumped to ${toStar ? toStar.name : 'Unknown'} (${e.distance} ly${fuelNote})`;
         break;
       }
       case 'enter_system': {
@@ -145,11 +181,16 @@ export function renderJournal(journal, galaxy) {
         icon = '⊙'; text = `Entered ${star ? star.name : 'Unknown'} system`;
         break;
       }
-      case 'scan_planet':
-        icon = '◎'; text = `Scanned ${e.planetName} — ${e.planetType}`;
+      case 'scan_planet': {
+        const rewards = (e.fuelGain || e.dataGain) ? ` (+${e.fuelGain || 0} fuel, +${e.dataGain || 0} data)` : '';
+        icon = '◎'; text = `Scanned ${e.planetName} — ${e.planetType}${rewards}`;
         break;
+      }
       case 'discovery':
         icon = '✦'; text = `Discovered: ${e.special}`;
+        break;
+      case 'event':
+        icon = e.success ? '✧' : '⚠'; text = `${e.title}: ${e.lore}`;
         break;
     }
     div.innerHTML = `<span class="je-icon">${icon}</span><span class="je-text">${text}</span><span class="je-time">${timeStr}</span>`;
@@ -161,4 +202,122 @@ export function showJournalNotice() {
   if (app.journalVisible) return;
   journalNotice.style.opacity = '1';
   setTimeout(() => { journalNotice.style.opacity = '0'; }, 2000);
+}
+
+// ── v5: Fuel gauge ──
+
+export function updateFuelGauge(state) {
+  const max = getMaxFuel(state);
+  const pct = Math.max(0, Math.min(100, (state.fuel / max) * 100));
+  hudFuelFill.style.width = pct + '%';
+  hudFuelVal.textContent = Math.round(state.fuel);
+  // Color: green > 50%, amber 25-50%, red < 25%
+  if (pct > 50) hudFuelFill.style.background = 'rgba(80,200,140,0.5)';
+  else if (pct > 25) hudFuelFill.style.background = 'rgba(220,180,60,0.5)';
+  else hudFuelFill.style.background = 'rgba(220,80,60,0.5)';
+  // Low fuel pulse
+  hudFuelWrap.classList.toggle('low', state.fuel < CONFIG.gameplay.lowFuelThreshold);
+}
+
+// ── v5: Data display ──
+
+export function updateDataDisplay(state) {
+  hudDataEl.textContent = `Data: ${state.data}`;
+}
+
+export function flashData() {
+  hudDataEl.classList.add('flash');
+  setTimeout(() => hudDataEl.classList.remove('flash'), 400);
+}
+
+// ── v5: Event card ──
+
+export function showEventCard(eventInstance, onChoice) {
+  ecTitle.textContent = eventInstance.title;
+  ecDescription.textContent = eventInstance.description;
+  ecChoices.innerHTML = '';
+  eventInstance.choices.forEach((choice, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'ec-choice';
+    btn.innerHTML = `<span>${choice.label}</span><span class="ec-risk ${choice.risk}">${choice.risk}</span>`;
+    btn.addEventListener('click', () => {
+      hideEventCard();
+      onChoice(i);
+    });
+    ecChoices.appendChild(btn);
+  });
+  eventCard.classList.add('visible');
+  app.eventCardVisible = true;
+}
+
+export function hideEventCard() {
+  eventCard.classList.remove('visible');
+  app.eventCardVisible = false;
+}
+
+export function showOutcome(outcome, onDismiss) {
+  ocResult.textContent = outcome.success ? 'Success' : 'Failure';
+  ocResult.className = outcome.success ? 'success' : 'failure';
+  let rewardsHtml = '';
+  if (outcome.fuel > 0) rewardsHtml += `<span class="oc-fuel-gain">+${outcome.fuel} fuel</span>  `;
+  else if (outcome.fuel < 0) rewardsHtml += `<span class="oc-fuel-loss">${outcome.fuel} fuel</span>  `;
+  if (outcome.data > 0) rewardsHtml += `<span class="oc-data-gain">+${outcome.data} data</span>`;
+  else if (outcome.data < 0) rewardsHtml += `<span class="oc-data-gain">${outcome.data} data</span>`;
+  ocRewards.innerHTML = rewardsHtml || 'No rewards';
+  if (outcome.lore) { ocLore.textContent = outcome.lore; ocLore.style.display = 'block'; }
+  else { ocLore.style.display = 'none'; }
+  outcomeOverlay.classList.add('visible');
+  setTimeout(() => {
+    outcomeOverlay.classList.remove('visible');
+    if (onDismiss) onDismiss();
+  }, 2500);
+}
+
+// ── v5: Upgrade panel ──
+
+export function showUpgradePanel(state, upgradeTree, onPurchase) {
+  upgradeDataDisplay.textContent = `Data: ${state.data}`;
+  upgradeGrid.innerHTML = '';
+  for (const [catId, cat] of Object.entries(upgradeTree)) {
+    const catDiv = document.createElement('div');
+    catDiv.className = 'ug-category';
+    catDiv.innerHTML = `<div class="ug-cat-title"><span class="ug-cat-icon">${cat.icon}</span>${cat.label}</div>`;
+    cat.tiers.forEach((tier, tierIdx) => {
+      const tierNum = tierIdx + 1;
+      const owned = state.upgrades[catId] >= tierNum;
+      const canBuy = !owned && state.upgrades[catId] >= tierIdx && state.data >= tier.cost;
+      const locked = !owned && state.upgrades[catId] < tierIdx;
+      const tierDiv = document.createElement('div');
+      tierDiv.className = 'ug-tier';
+      let statusHtml;
+      if (owned) {
+        statusHtml = '<span class="ug-owned">Installed</span>';
+      } else if (locked) {
+        statusHtml = '<span class="ug-locked">Locked</span>';
+      } else {
+        const btn = `<button class="ug-buy-btn" data-cat="${catId}" data-tier="${tierNum}" ${canBuy ? '' : 'disabled'}>${canBuy ? 'Install' : 'Insufficient data'}</button>`;
+        statusHtml = btn;
+      }
+      tierDiv.innerHTML = `<div class="ug-tier-name">${tier.label}</div><div class="ug-tier-desc">${tier.description}</div><div class="ug-tier-cost">${tier.cost} data</div>${statusHtml}`;
+      catDiv.appendChild(tierDiv);
+    });
+    upgradeGrid.appendChild(catDiv);
+  }
+  // Wire buy buttons
+  upgradeGrid.querySelectorAll('.ug-buy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cat = btn.dataset.cat;
+      const tier = parseInt(btn.dataset.tier);
+      if (onPurchase(cat, tier)) {
+        showUpgradePanel(state, upgradeTree, onPurchase); // re-render
+      }
+    });
+  });
+  upgradePanel.classList.add('visible');
+  app.upgradesPanelVisible = true;
+}
+
+export function hideUpgradePanel() {
+  upgradePanel.classList.remove('visible');
+  app.upgradesPanelVisible = false;
 }

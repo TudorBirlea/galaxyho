@@ -1,3 +1,5 @@
+import { CONFIG } from './config.js?v=5.0';
+
 const SAVE_KEY = 'galaxyho_save';
 
 export function createState(seed) {
@@ -11,6 +13,13 @@ export function createState(seed) {
     shipPlanetId: null,
     scannedPlanets: new Set(),
     journal: [],
+    // v5 gameplay
+    fuel: CONFIG.gameplay.baseFuel,
+    data: CONFIG.gameplay.startingData,
+    upgrades: { engines: 0, sensors: 0, fuel_systems: 0, comms: 0 },
+    resolvedEvents: {},
+    totalScans: 0,
+    totalJumps: 0,
   };
 }
 
@@ -29,13 +38,22 @@ export function loadState() {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw);
-    if (!s.reachableStars || s.shipStarId === undefined) return null; // incompatible format, fresh start
+    if (!s.reachableStars || s.shipStarId === undefined) return null;
     s.visitedStars = new Set(s.visitedStars);
     s.reachableStars = new Set(s.reachableStars);
     s.scannedPlanets = new Set(s.scannedPlanets || []);
     s.journal = s.journal || [];
-    s.currentView = 'galaxy'; // always start in galaxy view
+    s.currentView = 'galaxy';
     s.currentStarId = null;
+    // v5 migration: add gameplay fields for old saves
+    if (s.fuel === undefined) {
+      s.fuel = CONFIG.gameplay.baseFuel;
+      s.data = 0;
+      s.upgrades = { engines: 0, sensors: 0, fuel_systems: 0, comms: 0 };
+      s.resolvedEvents = {};
+      s.totalScans = 0;
+      s.totalJumps = 0;
+    }
     return s;
   } catch { return null; }
 }

@@ -1,4 +1,4 @@
-export const VERSION = '3.7';
+export const VERSION = '5.0';
 
 export const CONFIG = {
   galaxy: {
@@ -123,6 +123,36 @@ export const CONFIG = {
     dustCurvature: 0.8,
     activityExp: 1.2,
     sparkleAmt: 0.4,
+  },
+  // ── v5 gameplay ──
+  gameplay: {
+    baseFuel: 100,
+    baseMaxFuel: 100,
+    fuelPerLy: 3.5,
+    startingData: 0,
+    scanDataReward: [3, 8],
+    fuelByPlanetType: {
+      terran: [8, 15],
+      desert: [3, 8],
+      ice: [5, 10],
+      gas_giant: [12, 25],
+      lava: [2, 6],
+      ocean: [6, 12],
+      water: [8, 16],
+    },
+    lowFuelThreshold: 25,
+    eventChance: 0.70,
+  },
+  ship: {
+    meshScale: 0.12,
+    flightSpeedMin: 0.8,
+    flightSpeedMax: 3.0,
+    arcHeightFactor: 0.35,
+    thrusterParticleCount: 60,
+    thrusterLifetime: 1.5,
+    thrusterColor: [1.0, 0.7, 0.3],
+    cameraFollowLerp: 0.05,
+    cameraOffset: [0, 4, 8],
   },
   remnants: {
     blackHoleCount: [1, 2],

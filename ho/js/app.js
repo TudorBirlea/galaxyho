@@ -28,4 +28,11 @@ export const app = {
   starGlowSprite: null,     // Star glow billboard sprite
   starfieldMat: null,       // System starfield ShaderMaterial (for brightness tuning)
   cometEntries: [],         // [{comaSprite, ionPoints, dustPoints, orbitLine, def, prevX/Y/Z}]
+  // ── v5 gameplay ──
+  shipMesh: null,            // THREE.Group for 3D ship in system view
+  shipThrusterPoints: null,  // Points for thruster trail
+  shipFlightAnim: null,      // { startPos, endPos, controlPos, startTime, duration, targetEntry, onArrive }
+  eventCardVisible: false,   // Event card modal open
+  upgradesPanelVisible: false, // Upgrade panel open
+  currentEvent: null,        // Active EventInstance
 };

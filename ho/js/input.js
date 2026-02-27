@@ -1,12 +1,28 @@
 import * as THREE from 'three';
-import { renderer, camera } from './engine.js?v=3.7';
-import { app } from './app.js?v=3.7';
+import { renderer, camera } from './engine.js?v=5.0';
+import { app } from './app.js?v=5.0';
 import { showTooltip, hideTooltip, showInfoCard, hideInfoCard, showLockMessage,
          hudLocation, ttEnter, ttJump, backBtn, icClose, journalBtn, journalClose,
-         toggleJournal, renderJournal } from './ui.js?v=3.7';
-import { starDistance } from './data.js?v=3.7';
-import { drawMinimap } from './minimap.js?v=3.7';
-import { capturePlanetSnapshot } from './system-view.js?v=3.7';
+         toggleJournal, renderJournal } from './ui.js?v=5.0';
+import { starDistance } from './data.js?v=5.0';
+import { drawMinimap } from './minimap.js?v=5.0';
+import { capturePlanetSnapshot } from './system-view.js?v=5.0';
+import { flyShipToPlanet, isShipFlying } from './ship.js?v=5.0';
+import { getUpgradeEffects } from './gameplay.js?v=5.0';
+
+function isStarReachable(starId) {
+  if (app.state.reachableStars.has(starId)) return true;
+  // Extended Range upgrade: 2-hop jumps from ship's current star
+  const effects = getUpgradeEffects(app.state);
+  if (effects.jumpRange >= 2) {
+    const shipStar = app.galaxy.stars[app.state.shipStarId];
+    for (const adjId of shipStar.adjacentIds) {
+      const adjStar = app.galaxy.stars[adjId];
+      if (adjStar.adjacentIds.includes(starId)) return true;
+    }
+  }
+  return false;
+}
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -37,7 +53,7 @@ function handleTap(e, callbacks) {
       }
     }
     if (closest) {
-      if (!app.state.reachableStars.has(closest.id)) {
+      if (!isStarReachable(closest.id)) {
         showLockMessage();
         return;
       }
@@ -55,15 +71,30 @@ function handleTap(e, callbacks) {
       drawMinimap(app.galaxy, app.state, null);
     }
   } else if (app.state.currentView === 'system') {
+    // v5: Ignore taps while ship is flying or event card is open
+    if (isShipFlying() || app.eventCardVisible) return;
+
     const meshes = app.systemPlanets.map(p => p.mesh);
     const hits = raycaster.intersectObjects(meshes, false);
     if (hits.length > 0) {
       const planet = hits[0].object.userData.planet;
       const entry = app.systemPlanets.find(p => p.data.id === planet.id);
-      const snapshot = entry ? capturePlanetSnapshot(entry) : null;
-      showInfoCard(planet, snapshot);
-      callbacks.scanPlanet(planet);
       app.selectedPlanetId = planet.id;
+
+      // v5: Orbital Scan upgrade — scan without flying
+      const effects = getUpgradeEffects(app.state);
+      if (effects.orbitalScan) {
+        const snapshot = capturePlanetSnapshot(entry);
+        showInfoCard(entry.data, snapshot);
+        callbacks.scanPlanet(entry.data);
+      } else {
+        // Fly ship to planet, scan on arrival
+        flyShipToPlanet(entry, (arrivedEntry) => {
+          const snapshot = capturePlanetSnapshot(arrivedEntry);
+          showInfoCard(arrivedEntry.data, snapshot);
+          callbacks.scanPlanet(arrivedEntry.data);
+        });
+      }
     } else {
       hideInfoCard();
       app.selectedPlanetId = null;
@@ -100,7 +131,10 @@ export function setupInput({ enterSystem, exitSystem, jumpToStar, scanPlanet }) 
     }
   });
 
-  backBtn.addEventListener('click', () => exitSystem());
+  backBtn.addEventListener('click', () => {
+    if (app.eventCardVisible) return; // v5: don't exit during event
+    exitSystem();
+  });
   icClose.addEventListener('click', () => hideInfoCard());
 
   journalBtn.addEventListener('click', () => {

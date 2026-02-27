@@ -1,12 +1,15 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js?v=3.7';
+import { CONFIG } from './config.js?v=5.0';
 import { STAR_VERT, STAR_FRAG, PLANET_VERT, PLANET_FRAG, RING_VERT, RING_FRAG,
          ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG,
-         COMET_TAIL_VERT, COMET_TAIL_FRAG } from './shaders.js?v=3.7';
-import { mulberry32 } from './utils.js?v=3.7';
-import { generatePlanets, generateAsteroidBelt, generateComets } from './data.js?v=3.7';
-import { systemGroup, camera, renderer } from './engine.js?v=3.7';
-import { app } from './app.js?v=3.7';
+         COMET_TAIL_VERT, COMET_TAIL_FRAG } from './shaders.js?v=5.0';
+import { mulberry32 } from './utils.js?v=5.0';
+import { generatePlanets, generateAsteroidBelt, generateComets } from './data.js?v=5.0';
+import { systemGroup, camera, renderer } from './engine.js?v=5.0';
+import { app } from './app.js?v=5.0';
+import { createShipMesh, positionShipAtStar, updateShip, clearShip } from './ship.js?v=5.0';
+import { hashInt } from './utils.js?v=5.0';
+import { getUpgradeEffects } from './gameplay.js?v=5.0';
 
 // Texture cache — shared across system visits
 const textureCache = {};
@@ -266,6 +269,39 @@ export function buildSystemView(star) {
     }
 
     app.systemPlanets.push({ mesh, ring, data: p, orbitLine: oLine, atmosMesh, moonMeshes });
+  }
+
+  // v5: Event indicators (Event Scanner upgrade)
+  const effects = getUpgradeEffects(app.state);
+  if (effects.revealEvents) {
+    for (const pe of app.systemPlanets) {
+      const key = star.id + '-' + pe.data.id;
+      if (app.state.resolvedEvents && app.state.resolvedEvents[key]) continue;
+      if (app.state.scannedPlanets.has(key)) continue;
+      // Deterministic event check (same as events.js)
+      const evtRng = mulberry32(hashInt(pe.data.seed, 9999));
+      if (evtRng() <= CONFIG.gameplay.eventChance) {
+        // Add a small pulsing indicator sprite above the planet
+        const indCanvas = document.createElement('canvas');
+        indCanvas.width = 32; indCanvas.height = 32;
+        const iCtx = indCanvas.getContext('2d');
+        const iGrad = iCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
+        iGrad.addColorStop(0, 'rgba(255,200,60,1)');
+        iGrad.addColorStop(0.3, 'rgba(255,180,40,0.5)');
+        iGrad.addColorStop(1, 'rgba(255,150,20,0)');
+        iCtx.fillStyle = iGrad;
+        iCtx.fillRect(0, 0, 32, 32);
+        const indTex = new THREE.CanvasTexture(indCanvas);
+        const indSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: indTex, transparent: true, opacity: 0.7,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+        }));
+        indSprite.scale.setScalar(0.3);
+        indSprite.renderOrder = 5;
+        indSprite.userData = { eventIndicator: true, planetId: pe.data.id };
+        systemGroup.add(indSprite);
+      }
+    }
   }
 
   // v4: Enhanced asteroid belt — Keplerian orbits, irregular shapes, composition colors,
@@ -648,6 +684,10 @@ export function buildSystemView(star) {
   });
   systemGroup.add(new THREE.Points(sGeo, sfMat));
   app.starfieldMat = sfMat;
+
+  // v5: Ship mesh
+  createShipMesh();
+  positionShipAtStar(starRadius);
 }
 
 export function clearSystemView() {
@@ -670,6 +710,7 @@ export function clearSystemView() {
   app.starGlowSprite = null;
   app.starfieldMat = null;
   app.cometEntries = [];
+  clearShip();
 }
 
 const _ivp = new THREE.Matrix4();
@@ -715,6 +756,17 @@ export function updateSystemView(time) {
         const mx = px + Math.cos(ma) * moon.data.orbitRadius;
         const mz = pz + Math.sin(ma) * moon.data.orbitRadius;
         moon.mesh.position.set(mx, 0, mz);
+      }
+    }
+  }
+
+  // v5: Update event indicator positions
+  for (const child of systemGroup.children) {
+    if (child.userData && child.userData.eventIndicator) {
+      const pe = app.systemPlanets.find(p => p.data.id === child.userData.planetId);
+      if (pe) {
+        child.position.set(pe.mesh.position.x, pe.mesh.position.y + pe.data.visualSize + 0.4, pe.mesh.position.z);
+        child.material.opacity = 0.4 + 0.3 * Math.sin(time * 3);
       }
     }
   }
