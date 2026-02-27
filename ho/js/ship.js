@@ -1,14 +1,12 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js?v=5.0';
 import { app } from './app.js?v=5.0';
-import { camera, controls, systemGroup } from './engine.js?v=5.0';
+import { controls, systemGroup } from './engine.js?v=5.0';
 import { easeInOutCubic } from './utils.js?v=5.0';
 import { getUpgradeEffects } from './gameplay.js?v=5.0';
 
-const _desiredCam = new THREE.Vector3();
 const _lookAt = new THREE.Vector3();
 const _origin = new THREE.Vector3();
-const _pos = new THREE.Vector3();
 
 // ────────────────────────────────────────────────────────────
 // Ship mesh creation (unchanged from v5.2)
@@ -344,8 +342,7 @@ export function updateShip(time, deltaTime) {
       // Heavy thruster particles during burn
       spawnThrusterParticle(app.shipMesh.position, deltaTime, 5);
 
-      // Camera follows ship
-      followCamera(sc);
+      controls.target.lerp(_origin, 0.05);
 
       if (bt >= 1) {
         orb.state = 'transfer';
@@ -375,8 +372,7 @@ export function updateShip(time, deltaTime) {
       // Normal thruster rate during coast
       spawnThrusterParticle(app.shipMesh.position, deltaTime, 1);
 
-      // Camera follows
-      followCamera(sc);
+      controls.target.lerp(_origin, 0.05);
 
       // Track current angle for approach
       orb.orbitAngle = p.angle;
@@ -411,7 +407,7 @@ export function updateShip(time, deltaTime) {
 
       // Heavy thruster particles
       spawnThrusterParticle(app.shipMesh.position, deltaTime, 5);
-      followCamera(sc);
+      controls.target.lerp(_origin, 0.05);
 
       if (bt >= 1) {
         orb.state = 'approach';
@@ -460,7 +456,7 @@ export function updateShip(time, deltaTime) {
 
       // Light thruster puffs during approach
       spawnThrusterParticle(app.shipMesh.position, deltaTime, 1);
-      followCamera(sc);
+      controls.target.lerp(_origin, 0.05);
       break;
     }
 
@@ -508,16 +504,6 @@ function normalizeAngle(a) {
   return a;
 }
 
-function followCamera(sc) {
-  _desiredCam.set(
-    app.shipMesh.position.x + sc.cameraOffset[0],
-    app.shipMesh.position.y + sc.cameraOffset[1],
-    app.shipMesh.position.z + sc.cameraOffset[2]
-  );
-  controls.target.lerp(app.shipMesh.position, sc.cameraFollowLerp);
-  camera.position.lerp(_desiredCam, sc.cameraFollowLerp * 0.8);
-}
-
 function spawnThrusterParticle(shipPos, dt, intensityMult) {
   const tp = app.shipThrusterPoints;
   if (!tp) return;
@@ -559,6 +545,12 @@ export function isShipFlying() {
   const orb = app.shipOrbit;
   if (!orb) return false;
   return orb.state !== 'parking' && orb.state !== 'docked';
+}
+
+export function getDockedPlanetId() {
+  const orb = app.shipOrbit;
+  if (!orb || orb.state !== 'docked') return null;
+  return orb.dockedPlanetId;
 }
 
 export function clearShip() {

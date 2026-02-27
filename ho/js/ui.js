@@ -1,6 +1,7 @@
 import { CONFIG, VERSION } from './config.js?v=5.0';
 import { app } from './app.js?v=5.0';
 import { getMaxFuel, getUpgradeEffects, calculateJumpFuelCost } from './gameplay.js?v=5.0';
+import { getDockedPlanetId } from './ship.js?v=5.0';
 
 const tooltipEl = document.getElementById('tooltip');
 const ttName = document.getElementById('tt-name');
@@ -146,6 +147,10 @@ export function hideInfoCard() {
 
 function updateActionButtons(planet) {
   const actions = app.getPlanetActions ? app.getPlanetActions(planet) : {};
+  const effects = getUpgradeEffects(app.state);
+  const shipHere = getDockedPlanetId() === planet.id || effects.orbitalScan;
+  const actionsWrap = document.getElementById('ic-actions');
+  actionsWrap.classList.toggle('locked', !shipHere);
   document.querySelectorAll('#ic-actions .ic-action').forEach(el => {
     const action = el.dataset.action;
     const stateKey = ACTION_KEYS[action];
@@ -205,6 +210,7 @@ function completeAction(actionEl, action) {
 // Wire action button clicks
 document.querySelectorAll('#ic-actions .ic-action').forEach(el => {
   el.addEventListener('click', () => {
+    if (el.closest('#ic-actions').classList.contains('locked')) return;
     if (el.classList.contains('done') || el.classList.contains('active') || activeActionTimer) return;
     startAction(el, el.dataset.action);
   });
@@ -403,4 +409,77 @@ export function showUpgradePanel(state, upgradeTree, onPurchase) {
 export function hideUpgradePanel() {
   upgradePanel.classList.remove('visible');
   app.upgradesPanelVisible = false;
+}
+
+// ── System Summary Panel ──
+const systemPanel = document.getElementById('system-panel');
+const syspName = document.getElementById('sysp-name');
+const syspBadge = document.getElementById('sysp-badge');
+const syspTemp = document.getElementById('sysp-temp');
+const syspPlanets = document.getElementById('sysp-planets');
+const syspBelt = document.getElementById('sysp-belt');
+const syspComets = document.getElementById('sysp-comets');
+
+let _currentSysStar = null;
+
+const SPECTRAL_BADGE_COLORS = {
+  O: 'rgba(34,68,255,0.7)',
+  B: 'rgba(34,204,255,0.7)',
+  A: 'rgba(51,238,187,0.7)',
+  F: 'rgba(238,221,68,0.7)',
+  G: 'rgba(255,187,0,0.7)',
+  K: 'rgba(255,119,0,0.7)',
+  M: 'rgba(255,34,0,0.7)',
+};
+
+export function showSystemPanel(star) {
+  _currentSysStar = star;
+  syspName.textContent = star.name;
+
+  if (star.remnantType === 'blackHole') {
+    syspBadge.textContent = 'Black Hole';
+    syspBadge.style.background = 'rgba(40,0,60,0.6)';
+    syspBadge.style.color = 'rgba(200,120,255,0.8)';
+    syspTemp.textContent = '';
+  } else if (star.remnantType === 'neutronStar') {
+    syspBadge.textContent = 'Neutron Star';
+    syspBadge.style.background = 'rgba(0,40,60,0.6)';
+    syspBadge.style.color = 'rgba(120,200,255,0.8)';
+    syspTemp.textContent = '';
+  } else if (star.remnantType === 'whiteDwarf') {
+    syspBadge.textContent = 'White Dwarf';
+    syspBadge.style.background = 'rgba(60,60,60,0.5)';
+    syspBadge.style.color = 'rgba(220,220,240,0.8)';
+    syspTemp.textContent = '';
+  } else {
+    const sc = CONFIG.spectral[star.spectralClass];
+    syspBadge.textContent = `Class ${star.spectralClass}`;
+    syspBadge.style.background = SPECTRAL_BADGE_COLORS[star.spectralClass] || 'rgba(255,255,255,0.15)';
+    syspBadge.style.color = 'rgba(0,0,0,0.75)';
+    syspTemp.textContent = sc ? sc.tempLabel : '';
+  }
+
+  syspBelt.textContent = star.hasBelt ? '◆ Asteroid Belt' : '';
+  syspComets.textContent = star.hasComets ? '◆ Comet Activity' : '';
+
+  updateSystemPanel();
+  systemPanel.style.display = 'block';
+}
+
+export function hideSystemPanel() {
+  systemPanel.style.display = 'none';
+  _currentSysStar = null;
+}
+
+export function updateSystemPanel() {
+  if (!_currentSysStar) return;
+  const planets = app.systemPlanets || [];
+  const total = planets.length;
+  let explored = 0;
+  for (const p of planets) {
+    const key = `${_currentSysStar.id}-${p.data.id}`;
+    const actions = app.state.planetActions[key];
+    if (actions && actions.scanned && actions.mined && actions.explored) explored++;
+  }
+  syspPlanets.innerHTML = `<span>${total}</span> planets · <span>${explored}</span> complete`;
 }

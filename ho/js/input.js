@@ -7,7 +7,7 @@ import { showTooltip, hideTooltip, showInfoCard, hideInfoCard, showLockMessage,
 import { starDistance } from './data.js?v=5.0';
 import { drawMinimap } from './minimap.js?v=5.0';
 import { capturePlanetSnapshot } from './system-view.js?v=5.0';
-import { flyShipToPlanet, isShipFlying } from './ship.js?v=5.0';
+import { flyShipToPlanet, isShipFlying, getDockedPlanetId } from './ship.js?v=5.0';
 import { getUpgradeEffects } from './gameplay.js?v=5.0';
 
 function isStarReachable(starId) {
@@ -32,7 +32,7 @@ function getPointerPos(e) {
   return { x: (e.clientX / window.innerWidth) * 2 - 1, y: -(e.clientY / window.innerHeight) * 2 + 1 };
 }
 
-function handleTap(e, callbacks) {
+function handleTap(e) {
   if (app.transitioning) return;
   const p = getPointerPos(e);
   pointer.set(p.x, p.y);
@@ -71,7 +71,7 @@ function handleTap(e, callbacks) {
       drawMinimap(app.galaxy, app.state, null);
     }
   } else if (app.state.currentView === 'system') {
-    // v5: Ignore taps while ship is flying or event card is open
+    // Ignore taps while ship is flying or event card is open
     if (isShipFlying() || app.eventCardVisible) return;
 
     const meshes = app.systemPlanets.map(p => p.mesh);
@@ -79,21 +79,22 @@ function handleTap(e, callbacks) {
     if (hits.length > 0) {
       const planet = hits[0].object.userData.planet;
       const entry = app.systemPlanets.find(p => p.data.id === planet.id);
-      app.selectedPlanetId = planet.id;
 
-      // v5: Orbital Scan upgrade — scan without flying
-      const effects = getUpgradeEffects(app.state);
-      if (effects.orbitalScan) {
+      if (app.selectedPlanetId === planet.id) {
+        // Second click on same planet → fly ship (unless already docked there)
+        const dockedId = getDockedPlanetId();
+        if (dockedId !== planet.id) {
+          flyShipToPlanet(entry, (arrivedEntry) => {
+            // Refresh info card now that ship is docked
+            const snapshot = capturePlanetSnapshot(arrivedEntry);
+            showInfoCard(arrivedEntry.data, snapshot);
+          });
+        }
+      } else {
+        // First click → show info card
+        app.selectedPlanetId = planet.id;
         const snapshot = capturePlanetSnapshot(entry);
         showInfoCard(entry.data, snapshot);
-        callbacks.scanPlanet(entry.data);
-      } else {
-        // Fly ship to planet, scan on arrival
-        flyShipToPlanet(entry, (arrivedEntry) => {
-          const snapshot = capturePlanetSnapshot(arrivedEntry);
-          showInfoCard(arrivedEntry.data, snapshot);
-          callbacks.scanPlanet(arrivedEntry.data);
-        });
       }
     } else {
       hideInfoCard();
@@ -103,7 +104,7 @@ function handleTap(e, callbacks) {
   }
 }
 
-export function setupInput({ enterSystem, exitSystem, jumpToStar, scanPlanet }) {
+export function setupInput({ enterSystem, exitSystem, jumpToStar }) {
   renderer.domElement.addEventListener('pointerdown', (e) => {
     pointerDownTime = Date.now();
     pointerDownPos = { x: e.clientX, y: e.clientY };
@@ -113,7 +114,7 @@ export function setupInput({ enterSystem, exitSystem, jumpToStar, scanPlanet }) 
     const dt = Date.now() - pointerDownTime;
     const dx = e.clientX - pointerDownPos.x, dy = e.clientY - pointerDownPos.y;
     if (dt < 350 && Math.sqrt(dx * dx + dy * dy) < 12) {
-      handleTap(e, { scanPlanet });
+      handleTap(e);
     }
   });
 

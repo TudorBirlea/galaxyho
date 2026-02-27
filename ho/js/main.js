@@ -9,7 +9,8 @@ import { easeInOutCubic } from './utils.js?v=5.0';
 import { hideTooltip, hideInfoCard, updateHUD, hudLocation, backBtn, overlay,
          renderJournal, showJournalNotice, updateFuelGauge, updateDataDisplay,
          flashData, showLockMessage, showEventCard, hideEventCard, showOutcome,
-         showUpgradePanel, hideUpgradePanel, upgradeBtn, upgradeClose } from './ui.js?v=5.0';
+         showUpgradePanel, hideUpgradePanel, upgradeBtn, upgradeClose,
+         showSystemPanel, hideSystemPanel, updateSystemPanel } from './ui.js?v=5.0';
 import { buildGalaxyView } from './galaxy-view.js?v=5.0';
 import { buildSystemView, clearSystemView, updateSystemView } from './system-view.js?v=5.0';
 import { setupInput } from './input.js?v=5.0';
@@ -52,7 +53,7 @@ function init() {
   updateHUD(app.galaxy, app.state);
   hudLocation.textContent = 'Galaxy View';
 
-  setupInput({ enterSystem, exitSystem, jumpToStar, scanPlanet });
+  setupInput({ enterSystem, exitSystem, jumpToStar });
   drawMinimap(app.galaxy, app.state, app.selectedStar);
   updateFuelGauge(app.state);
   updateDataDisplay(app.state);
@@ -73,10 +74,6 @@ export function getJournal() { return app.state.journal; }
 // ── Planet scanning ──
 
 // Legacy wrapper — input.js still calls scanPlanet on click
-function scanPlanet(planet) {
-  // No-op: actions are now performed via info card buttons
-}
-
 function getPlanetActions(planet) {
   const key = app.state.currentStarId + '-' + planet.id;
   if (!app.state.planetActions) app.state.planetActions = {};
@@ -132,6 +129,7 @@ function performPlanetAction(planet, actionType) {
   updateFuelGauge(app.state);
   updateDataDisplay(app.state);
   updateHUD(app.galaxy, app.state);
+  updateSystemPanel();
   if (result.data) flashData();
   saveState(app.state);
 
@@ -286,6 +284,7 @@ function exitSystem() {
   hideInfoCard();
   hideEventCard();
   hideUpgradePanel();
+  hideSystemPanel();
   app.currentEvent = null;
   app.state.currentView = 'galaxy';
   const prevStarId = app.state.currentStarId;
@@ -373,6 +372,7 @@ function animate() {
         galaxyGroup.visible = false;
         systemGroup.visible = true;
         buildSystemView(transAnim.star);
+        showSystemPanel(transAnim.star);
 
         const sc = CONFIG.camera.system;
         camera.fov = sc.fov;
