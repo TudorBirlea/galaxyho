@@ -252,18 +252,37 @@ export function updateShip(time, deltaTime) {
       const cb = anim.onArrive;
       const entry = anim.targetEntry;
       app.shipFlightAnim = null;
-      // Settle on planet position (keep updating with orbit)
+      // Dock: start orbiting the planet
       app.shipMesh.userData.dockedPlanetId = entry.data.id;
+      app.shipMesh.userData.orbitAngle = Math.atan2(
+        app.shipMesh.position.z - entry.mesh.position.z,
+        app.shipMesh.position.x - entry.mesh.position.x
+      );
       if (cb) cb(entry);
     }
   } else {
-    // If docked at a planet, follow its orbit (ship only, not camera)
+    // If docked at a planet, orbit around it
     const dockedId = app.shipMesh.userData.dockedPlanetId;
     if (dockedId !== undefined && dockedId !== null) {
       const entry = app.systemPlanets.find(p => p.data.id === dockedId);
       if (entry) {
         const pos = entry.mesh.position;
-        app.shipMesh.position.set(pos.x, pos.y + entry.data.visualSize * 1.5, pos.z);
+        const orbitR = entry.data.visualSize * 2.5;
+        const tilt = 0.3; // slight tilt for visual interest
+        app.shipMesh.userData.orbitAngle += deltaTime * 0.5;
+        const a = app.shipMesh.userData.orbitAngle;
+        app.shipMesh.position.set(
+          pos.x + Math.cos(a) * orbitR,
+          pos.y + Math.sin(a) * orbitR * tilt,
+          pos.z + Math.sin(a) * orbitR
+        );
+        // Face along orbit direction (tangent)
+        _lookAt.set(
+          pos.x + Math.cos(a + 0.1) * orbitR,
+          pos.y + Math.sin(a + 0.1) * orbitR * tilt,
+          pos.z + Math.sin(a + 0.1) * orbitR
+        );
+        app.shipMesh.lookAt(_lookAt);
       }
     }
     // Always keep orbit center on the star (origin)

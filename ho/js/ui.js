@@ -105,7 +105,14 @@ export function showTooltip(star, screenX, screenY, distance, isShipHere, isVisi
 
 export function hideTooltip() { tooltipEl.style.display = 'none'; }
 
+let currentInfoPlanet = null;
+let activeActionTimer = null;
+const icActionResult = document.getElementById('ic-action-result');
+const ACTION_DURATIONS = { scan: 0, mine: 1500, explore: 2000 };
+const ACTION_KEYS = { scan: 'scanned', mine: 'mined', explore: 'explored' };
+
 export function showInfoCard(planet, snapshot) {
+  currentInfoPlanet = planet;
   document.getElementById('ic-name').textContent = planet.name;
   const typeEl = document.getElementById('ic-type');
   typeEl.textContent = planet.label;
@@ -126,10 +133,82 @@ export function showInfoCard(planet, snapshot) {
   if (planet.special) { specialEl.textContent = planet.special; specialEl.style.display = 'block'; }
   else { specialEl.style.display = 'none'; }
 
+  updateActionButtons(planet);
+  if (icActionResult) icActionResult.textContent = '';
   infoCard.classList.add('visible');
 }
 
-export function hideInfoCard() { infoCard.classList.remove('visible'); }
+export function hideInfoCard() {
+  infoCard.classList.remove('visible');
+  currentInfoPlanet = null;
+  if (activeActionTimer) { clearTimeout(activeActionTimer); activeActionTimer = null; }
+}
+
+function updateActionButtons(planet) {
+  const actions = app.getPlanetActions ? app.getPlanetActions(planet) : {};
+  document.querySelectorAll('#ic-actions .ic-action').forEach(el => {
+    const action = el.dataset.action;
+    const stateKey = ACTION_KEYS[action];
+    const done = actions[stateKey] || false;
+    el.classList.toggle('done', done);
+    el.classList.remove('active');
+    el.querySelector('.ic-action-progress').style.width = '0';
+    el.querySelector('.ic-action-progress').style.transition = 'none';
+  });
+}
+
+function startAction(actionEl, action) {
+  if (!currentInfoPlanet || !app.performPlanetAction) return;
+  const stateKey = ACTION_KEYS[action];
+  const actions = app.getPlanetActions(currentInfoPlanet);
+  if (actions[stateKey]) return;
+
+  const duration = ACTION_DURATIONS[action];
+  actionEl.classList.add('active');
+
+  if (duration === 0) {
+    // Instant action
+    completeAction(actionEl, action);
+  } else {
+    // Timed action with progress bar
+    const prog = actionEl.querySelector('.ic-action-progress');
+    prog.style.width = '0';
+    requestAnimationFrame(() => {
+      prog.style.transition = `width ${duration}ms linear`;
+      prog.style.width = '100%';
+    });
+    activeActionTimer = setTimeout(() => {
+      activeActionTimer = null;
+      completeAction(actionEl, action);
+    }, duration);
+  }
+}
+
+function completeAction(actionEl, action) {
+  const stateKey = ACTION_KEYS[action];
+  const result = app.performPlanetAction(currentInfoPlanet, stateKey);
+  actionEl.classList.remove('active');
+  actionEl.classList.add('done');
+
+  // Show reward inline
+  if (icActionResult && result) {
+    if (result.fuel) {
+      icActionResult.innerHTML = `<span class="ic-result-fuel">+${result.fuel} fuel</span>`;
+    } else if (result.data) {
+      icActionResult.innerHTML = `<span class="ic-result-data">+${result.data} data</span>` +
+        (result.event ? ` <span class="ic-result-event">Event!</span>` : '');
+    }
+    setTimeout(() => { if (icActionResult) icActionResult.textContent = ''; }, 2500);
+  }
+}
+
+// Wire action button clicks
+document.querySelectorAll('#ic-actions .ic-action').forEach(el => {
+  el.addEventListener('click', () => {
+    if (el.classList.contains('done') || el.classList.contains('active') || activeActionTimer) return;
+    startAction(el, el.dataset.action);
+  });
+});
 
 const hudVersion = document.getElementById('hud-version');
 

@@ -3,12 +3,12 @@
 ## What Is This
 A 3D space exploration game built with Three.js. The player discovers a procedurally generated galaxy cluster by cluster, flying a ship between star systems and scanning planets for fuel and data. Features procedural events with meaningful choices and a 12-upgrade progression tree.
 
-## Current Version: v5.1 "Gameplay"
+## Current Version: v5.2 "Gameplay"
 - **Galaxy View**: ~100 stars with parallax background starfield (3 layers), volumetric nebulae (3 layers per cloud, billboarded), bloom tint pass preserving spectral colors, dark dust lanes (FBM noise, NormalBlending), pulsating variable stars (~4%), stellar remnants (black holes, neutron stars, white dwarfs), particle stream warp trails on visited connections, asteroid belt & comet activity indicators in star tooltips
 - **System View**: Ray-marched atmospheric scattering on planets, planet shadow on rings, configurable star surface rotation, decorative moons orbiting planets, enhanced asteroid belts, comets with dual tails; black hole gravitational lensing shader, neutron star rotating beam cones, white dwarf rendering; **flyable ship** (ConeGeometry hull + wings + engine glow, quadratic Bezier arc flight, 60-particle thruster trail, camera follow), **event indicator sprites** (pulsing gold dots when Event Scanner upgrade active)
 - **Gameplay**: Fuel resource (consumed on star jumps, collected from planets by type), Data resource (earned from scanning + events, spent on upgrades), 37 procedural event templates (12 universal + per-type, seeded per planet, 2-3 choices with risk/reward), 12-upgrade tree (4 categories × 3 tiers: Engines, Sensors, Fuel Systems, Communications), emergency jump to home star when stranded
 - **Post-processing**: Film grain overlay, vignette, bloom tint (galaxy view), UnrealBloomPass
-- **Planet Info Cards**: Slide-up panel with type, size, habitability, metals, atmosphere, specials
+- **Planet Info Cards**: Slide-up panel with type, size, habitability, metals, atmosphere, specials, **3 action buttons** (Scan/Mine/Explore) with progress bars and inline reward display
 - **Progressive Unlock**: Visit 3 stars in a cluster → adjacent clusters unlock
 - **Persistence**: LocalStorage saves visited stars, unlocked clusters, fuel, data, upgrades, resolved events (with migration for old saves)
 - **Touch-first**: Drag to orbit, pinch to zoom, tap to select, double-tap to enter
@@ -96,7 +96,13 @@ _extras/               — Reference files, backups, experiments (gitignored)
   - Flight: quadratic Bezier arc with live target tracking (recomputes end position from orbiting planet each frame), duration scales with distance (0.8–3.0s), easeInOutCubic
   - Thruster trail: 60-particle Points with age/alpha attributes, AdditiveBlending, spawns during flight, fades when idle
   - Camera follow: controls.target lerps toward ship during flight, returns to star (origin) when idle (orbit center always on star)
-  - Docked orbit: ship follows planet position when parked, camera stays centered on star
+  - Docked orbit: ship orbits planet at 2.5× visualSize radius with 0.3 tilt, tangent-facing via lookAt(angle+0.1), camera stays centered on star
+- Planet actions: 3 independent per-planet actions (Scan/Mine/Explore), tracked in `state.planetActions["starId-planetId"]` as `{ scanned, mined, explored }` booleans
+  - Scan: instant, awards 3-8 data via `rollScanData()`, reveals planet stats
+  - Mine: 1.5s progress bar, awards fuel scaled by metalRichness (`rollMiningYield()`, metalRichness/50 multiplier)
+  - Explore: 2s progress bar, awards 3-6 data via `rollExploreData()`, triggers planet events
+  - Info card buttons: `.ic-action` elements with CSS progress bars, done-state checkmarks, inline reward display
+  - Each action once per planet, state persisted via `planetActions` in LocalStorage
 - Events: 37 templates (12 universal + 3-5 per planet type), seeded RNG per planet (hashInt(seed, 9999)), ~70% chance
   - Template structure: title, description ({planetName}/{starName} interpolation), planetTypes filter, rarity weighting (common=6, uncommon=3, rare=1), 2-3 choices with risk/successRate/outcome ranges
   - Resolution: seeded roll against successRate (modified by Deep Scanner +10%), interpolated reward ranges
@@ -152,3 +158,4 @@ terran, desert, ice, gas_giant, lava, ocean, water — hybrid texture-mapped wit
 - **v3.9**: Asteroid belt overhaul — 8 improvements: Keplerian per-particle orbital speeds (inner faster), irregular rocky shapes (4-lobe angular sine distortion in fragment shader), Gaussian vertical distribution (CLT clustering near midplane), 3 composition color types (silicate/carbonaceous/metallic), phase-angle star lighting, additive dust glow layer (RingGeometry + noise shader), 4 large tumbling rocks (IcosahedronGeometry + vertex displacement), rare collision dust bursts (~12s interval, 25-particle expanding puffs)
 - **v5.0**: Gameplay update — full gameplay loop added: flyable ship in system view (Bezier arc flight, thruster particles, camera follow), fuel resource (consumed on star jumps, collected from planets by type), data resource (earned from scanning + events, spent on upgrades), 37 procedural event templates (12 universal + per-type, seeded per planet, 2-3 risk/reward choices), 12-upgrade tree (Engines/Sensors/Fuel Systems/Communications × 3 tiers), emergency jump to home star, event indicator sprites, glassmorphism UI (fuel gauge, data counter, event cards, outcome overlays, upgrade panel); 4 new modules (gameplay.js, ship.js, events.js, upgrades.js), state migration for old saves
 - **v5.1**: Ship & camera polish — redesigned ship mesh (dual-cone fuselage, cockpit dome, delta wings, dorsal fin, engine nacelles, 3 glow sprites, hull accent stripe), ship spawns at system exterior beyond outermost orbit, live planet tracking during flight (fixes ship flying to stale position), camera orbit always centered on star (fixes rotation around ship), system view minDist reduced to 4, passive stellar fuel absorption (0.15/s base, 0.5/s with Solar Collector upgrade), ship status panel (SVG icon, location, fuel bar, data, stars explored, planets scanned), fuel/data moved from top HUD to ship panel, version bumped to 5.1
+- **v5.2**: Planet actions — 3 independent per-planet actions replace single scan: Scan (instant, +data), Mine (1.5s, +fuel scaled by metalRichness), Explore (2s, +data + triggers events); info card action buttons with CSS progress bars, done-state checkmarks, inline reward display; ship orbits docked planet (2.5× radius, tilted circle, tangent-facing) instead of static hover; per-planet action state tracking (`planetActions` object with migration from old `scannedPlanets`); new gameplay functions `rollMiningYield()` and `rollExploreData()`

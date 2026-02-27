@@ -12,6 +12,7 @@ export function createState(seed) {
     shipStarId: 0,
     shipPlanetId: null,
     scannedPlanets: new Set(),
+    planetActions: {}, // "starId-planetId": { scanned, mined, explored }
     journal: [],
     // v5 gameplay
     fuel: CONFIG.gameplay.baseFuel,
@@ -53,6 +54,14 @@ export function loadState() {
       s.resolvedEvents = {};
       s.totalScans = 0;
       s.totalJumps = 0;
+    }
+    // v5.2 migration: planetActions
+    if (!s.planetActions) {
+      s.planetActions = {};
+      // Convert old scannedPlanets to planetActions
+      for (const key of s.scannedPlanets) {
+        s.planetActions[key] = { scanned: true, mined: false, explored: false };
+      }
     }
     return s;
   } catch { return null; }

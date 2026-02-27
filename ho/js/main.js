@@ -15,7 +15,8 @@ import { buildSystemView, clearSystemView, updateSystemView } from './system-vie
 import { setupInput } from './input.js?v=5.0';
 import { drawMinimap } from './minimap.js?v=5.0';
 import { calculateJumpFuelCost, canJump, consumeFuel, addFuel, addData,
-         rollPlanetFuel, rollScanData, updateSolarRegen, getUpgradeEffects } from './gameplay.js?v=5.0';
+         rollPlanetFuel, rollScanData, rollMiningYield, rollExploreData,
+         updateSolarRegen, getUpgradeEffects } from './gameplay.js?v=5.0';
 import { updateShip } from './ship.js?v=5.0';
 import { generatePlanetEvent, resolveChoice } from './events.js?v=5.0';
 
@@ -71,37 +72,74 @@ export function getJournal() { return app.state.journal; }
 
 // ── Planet scanning ──
 
+// Legacy wrapper — input.js still calls scanPlanet on click
 function scanPlanet(planet) {
-  const key = app.state.currentStarId + '-' + planet.id;
-  if (app.state.scannedPlanets.has(key)) return;
-  app.state.scannedPlanets.add(key);
-  app.state.totalScans++;
+  // No-op: actions are now performed via info card buttons
+}
 
-  // v5: Award fuel and data for scanning
-  const fuelGain = rollPlanetFuel(planet);
-  const dataGain = rollScanData(planet);
+function getPlanetActions(planet) {
+  const key = app.state.currentStarId + '-' + planet.id;
+  if (!app.state.planetActions) app.state.planetActions = {};
+  if (!app.state.planetActions[key]) {
+    // Migrate from old scannedPlanets
+    const wasScanned = app.state.scannedPlanets.has(key);
+    app.state.planetActions[key] = { scanned: wasScanned, mined: false, explored: false };
+  }
+  return app.state.planetActions[key];
+}
+
+function performPlanetAction(planet, actionType) {
+  const key = app.state.currentStarId + '-' + planet.id;
+  const actions = getPlanetActions(planet);
+  if (actions[actionType]) return null; // already done
+  actions[actionType] = true;
+
   const effects = getUpgradeEffects(app.state);
-  addFuel(Math.round(fuelGain * effects.fuelGainMult), app.state);
-  addData(dataGain, app.state);
+  let result = { action: actionType };
+
+  if (actionType === 'scanned') {
+    const dataGain = rollScanData(planet);
+    addData(dataGain, app.state);
+    result.data = Math.round(dataGain * effects.dataGainMult);
+    app.state.scannedPlanets.add(key);
+    app.state.totalScans++;
+    addJournal({ type: 'scan_planet', starId: app.state.currentStarId, planetId: planet.id, planetName: planet.name, planetType: planet.label, fuelGain: 0, dataGain: result.data });
+    if (planet.special) {
+      addJournal({ type: 'discovery', starId: app.state.currentStarId, planetId: planet.id, special: planet.special });
+    }
+  } else if (actionType === 'mined') {
+    const fuelGain = rollMiningYield(planet);
+    const adjusted = Math.round(fuelGain * effects.fuelGainMult);
+    addFuel(adjusted, app.state);
+    result.fuel = adjusted;
+    addJournal({ type: 'scan_planet', starId: app.state.currentStarId, planetId: planet.id, planetName: planet.name, planetType: `Mining ${planet.label}`, fuelGain: adjusted, dataGain: 0 });
+  } else if (actionType === 'explored') {
+    const dataGain = rollExploreData(planet);
+    addData(dataGain, app.state);
+    result.data = Math.round(dataGain * effects.dataGainMult);
+    addJournal({ type: 'scan_planet', starId: app.state.currentStarId, planetId: planet.id, planetName: planet.name, planetType: `Exploring ${planet.label}`, fuelGain: 0, dataGain: result.data });
+
+    // Explore triggers events
+    const star = app.galaxy.stars[app.state.currentStarId];
+    const event = generatePlanetEvent(planet, star, app.state);
+    if (event) {
+      result.event = true;
+      app.currentEvent = event;
+      showEventCard(event, (choiceIndex) => handleEventChoice(choiceIndex));
+    }
+  }
+
   updateFuelGauge(app.state);
   updateDataDisplay(app.state);
-  flashData();
-
-  addJournal({ type: 'scan_planet', starId: app.state.currentStarId, planetId: planet.id, planetName: planet.name, planetType: planet.label, fuelGain, dataGain });
-  if (planet.special) {
-    addJournal({ type: 'discovery', starId: app.state.currentStarId, planetId: planet.id, special: planet.special });
-  }
-
-  // v5: Generate and show event
-  const star = app.galaxy.stars[app.state.currentStarId];
-  const event = generatePlanetEvent(planet, star, app.state);
-  if (event) {
-    app.currentEvent = event;
-    showEventCard(event, (choiceIndex) => handleEventChoice(choiceIndex));
-  }
-
+  updateHUD(app.galaxy, app.state);
+  if (result.data) flashData();
   saveState(app.state);
+  return result;
 }
+
+// Expose to UI
+app.performPlanetAction = performPlanetAction;
+app.getPlanetActions = getPlanetActions;
 
 // v5: Handle event choice resolution
 function handleEventChoice(choiceIndex) {

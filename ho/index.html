@@ -78,6 +78,27 @@ canvas{display:block}
 #ic-special{margin-top:14px;padding:11px 14px;background:rgba(255,200,60,0.05);border:1px solid rgba(255,200,60,0.08);
   border-radius:8px;color:rgba(255,200,60,0.55);font-size:12px;display:none;letter-spacing:0.3px}
 
+/* ── Planet Action Buttons ── */
+#ic-actions{display:flex;gap:10px;margin-top:14px}
+.ic-action{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 6px;
+  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;
+  cursor:pointer;transition:all 0.25s;position:relative;overflow:hidden;font-family:inherit}
+.ic-action:hover{background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.12)}
+.ic-action.done{opacity:0.3;cursor:default;pointer-events:none}
+.ic-action.done::after{content:'\2713';position:absolute;top:5px;right:7px;font-size:11px;color:rgba(80,200,140,0.6)}
+.ic-action.active{border-color:rgba(100,180,220,0.3);background:rgba(100,180,220,0.06)}
+.ic-action-icon{font-size:16px;line-height:1}
+.ic-action-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,0.4)}
+.ic-action-reward{font-size:9px;color:rgba(255,255,255,0.2);letter-spacing:0.5px}
+.ic-action-progress{position:absolute;bottom:0;left:0;height:2px;background:rgba(100,180,220,0.5);
+  width:0;border-radius:0 0 10px 10px}
+.ic-action.active .ic-action-progress{transition:width linear}
+#ic-action-result{text-align:center;font-size:11px;margin-top:8px;min-height:16px;letter-spacing:0.5px;
+  transition:opacity 0.3s}
+.ic-result-fuel{color:rgba(80,200,140,0.7)}
+.ic-result-data{color:rgba(140,200,240,0.7)}
+.ic-result-event{color:rgba(255,200,60,0.6)}
+
 /* ── Bottom Bar (buttons sit in a row above minimap) ── */
 #bottom-bar{position:fixed;bottom:20px;left:0;right:0;display:flex;justify-content:center;gap:10px;z-index:30;pointer-events:none}
 #bottom-bar>*{pointer-events:auto}
@@ -261,6 +282,27 @@ canvas{display:block}
   </div>
   <div id="ic-stats"></div>
   <div id="ic-special"></div>
+  <div id="ic-actions">
+    <div class="ic-action" data-action="scan">
+      <div class="ic-action-progress"></div>
+      <span class="ic-action-icon">&diamondsuit;</span>
+      <span class="ic-action-label">Scan</span>
+      <span class="ic-action-reward">+data</span>
+    </div>
+    <div class="ic-action" data-action="mine">
+      <div class="ic-action-progress"></div>
+      <span class="ic-action-icon">&#x26CF;</span>
+      <span class="ic-action-label">Mine</span>
+      <span class="ic-action-reward">+fuel</span>
+    </div>
+    <div class="ic-action" data-action="explore">
+      <div class="ic-action-progress"></div>
+      <span class="ic-action-icon">&#x25C7;</span>
+      <span class="ic-action-label">Explore</span>
+      <span class="ic-action-reward">+event</span>
+    </div>
+  </div>
+  <div id="ic-action-result"></div>
 </div>
 
 <div id="bottom-bar">

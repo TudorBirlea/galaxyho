@@ -87,3 +87,17 @@ export function rollScanData(planet) {
   const range = CONFIG.gameplay.scanDataReward;
   return Math.round(lerp(range[0], range[1], rng()));
 }
+
+// Mining: fuel yield scaled by metalRichness
+export function rollMiningYield(planet) {
+  const rng = mulberry32(hashInt(planet.seed, 6666));
+  const baseFuel = getFuelForPlanetType(planet.type);
+  const metalMult = planet.metalRichness / 50; // 0-2x based on metals (50% = 1x)
+  return Math.max(1, Math.round(lerp(baseFuel[0], baseFuel[1], rng()) * metalMult));
+}
+
+// Explore: data yield + separate seed
+export function rollExploreData(planet) {
+  const rng = mulberry32(hashInt(planet.seed, 5555));
+  return Math.round(lerp(3, 6, rng()));
+}
