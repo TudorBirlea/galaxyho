@@ -53,7 +53,7 @@ export const CONFIG = {
   transition: { enterDuration: 1.5, exitDuration: 1.0, fadePoint: 0.55 },
   camera: {
     galaxy: { pos: [0, 70, 100], target: [0, 0, 0], fov: 60, near: 1, far: 2000, minDist: 40, maxDist: 200 },
-    system: { pos: [0, 10, 30], target: [0, 0, 0], fov: 50, near: 0.1, far: 500, minDist: 12, maxDist: 80 },
+    system: { pos: [0, 10, 30], target: [0, 0, 0], fov: 50, near: 0.1, far: 500, minDist: 4, maxDist: 80 },
   },
   // ── v2 additions ──
   filmGrain: { intensity: 0.025 },
@@ -140,6 +140,7 @@ export const CONFIG = {
       ocean: [6, 12],
       water: [8, 16],
     },
+    baseRegenRate: 0.15,
     lowFuelThreshold: 25,
     eventChance: 0.70,
   },

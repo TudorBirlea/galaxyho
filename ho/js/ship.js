@@ -9,47 +9,108 @@ const _desiredCam = new THREE.Vector3();
 const _desiredTarget = new THREE.Vector3();
 const _tangent = new THREE.Vector3();
 const _lookAt = new THREE.Vector3();
+const _liveEnd = new THREE.Vector3();
+const _origin = new THREE.Vector3();
 
 export function createShipMesh() {
   const group = new THREE.Group();
 
-  // Hull — cone pointing +Z
-  const hullGeo = new THREE.ConeGeometry(0.12, 0.35, 6);
-  hullGeo.rotateX(Math.PI / 2); // point along +Z
-  const hullMat = new THREE.MeshBasicMaterial({ color: 0x88bbcc });
-  group.add(new THREE.Mesh(hullGeo, hullMat));
+  // ── Fuselage: sleek elongated shape (two cones joined at base) ──
+  const noseCone = new THREE.ConeGeometry(0.08, 0.22, 8);
+  noseCone.rotateX(Math.PI / 2);
+  noseCone.translate(0, 0, 0.11);
+  const bodyMat = new THREE.MeshBasicMaterial({ color: 0x8ab4c8 });
+  group.add(new THREE.Mesh(noseCone, bodyMat));
 
-  // Wings — two small angled planes
-  const wingGeo = new THREE.PlaneGeometry(0.24, 0.08);
-  const wingMat = new THREE.MeshBasicMaterial({ color: 0x6699aa, side: THREE.DoubleSide });
-  const wing1 = new THREE.Mesh(wingGeo, wingMat);
-  wing1.position.set(0.08, 0, -0.04);
-  wing1.rotation.z = -0.5;
-  group.add(wing1);
-  const wing2 = new THREE.Mesh(wingGeo, wingMat.clone());
-  wing2.position.set(-0.08, 0, -0.04);
-  wing2.rotation.z = 0.5;
-  group.add(wing2);
+  const rearCone = new THREE.ConeGeometry(0.1, 0.18, 8);
+  rearCone.rotateX(-Math.PI / 2);
+  rearCone.translate(0, 0, -0.06);
+  group.add(new THREE.Mesh(rearCone, bodyMat));
 
-  // Engine glow sprite
+  // Central body cylinder connecting the cones
+  const bodyCyl = new THREE.CylinderGeometry(0.085, 0.1, 0.06, 8);
+  bodyCyl.rotateX(Math.PI / 2);
+  bodyCyl.translate(0, 0, 0.0);
+  group.add(new THREE.Mesh(bodyCyl, bodyMat));
+
+  // ── Cockpit canopy — small emissive dome on top ──
+  const cockpitGeo = new THREE.SphereGeometry(0.04, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+  const cockpitMat = new THREE.MeshBasicMaterial({ color: 0x60ddff });
+  const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat);
+  cockpit.position.set(0, 0.055, 0.06);
+  group.add(cockpit);
+
+  // ── Delta wings — custom triangular geometry for swept-back look ──
+  function makeWing(side) {
+    const verts = new Float32Array([
+      0, 0, 0.04,           // root leading edge
+      side * 0.28, -0.01, -0.12,  // tip (swept back, slightly down)
+      0, 0, -0.1,           // root trailing edge
+    ]);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshBasicMaterial({ color: 0x6a9db0, side: THREE.DoubleSide });
+    return new THREE.Mesh(geo, mat);
+  }
+  group.add(makeWing(1));
+  group.add(makeWing(-1));
+
+  // ── Vertical stabilizer (dorsal fin) ──
+  const finVerts = new Float32Array([
+    0, 0.02, -0.04,   // base front
+    0, 0.14, -0.10,   // top
+    0, 0.02, -0.12,   // base rear
+  ]);
+  const finGeo = new THREE.BufferGeometry();
+  finGeo.setAttribute('position', new THREE.BufferAttribute(finVerts, 3));
+  finGeo.computeVertexNormals();
+  const finMat = new THREE.MeshBasicMaterial({ color: 0x7aaabb, side: THREE.DoubleSide });
+  group.add(new THREE.Mesh(finGeo, finMat));
+
+  // ── Engine nacelles — two small cylinders at wing roots ──
+  const nacelleGeo = new THREE.CylinderGeometry(0.025, 0.03, 0.12, 6);
+  nacelleGeo.rotateX(Math.PI / 2);
+  const nacelleMat = new THREE.MeshBasicMaterial({ color: 0x607888 });
+  const nac1 = new THREE.Mesh(nacelleGeo, nacelleMat);
+  nac1.position.set(0.1, -0.01, -0.06);
+  group.add(nac1);
+  const nac2 = new THREE.Mesh(nacelleGeo.clone(), nacelleMat);
+  nac2.position.set(-0.1, -0.01, -0.06);
+  group.add(nac2);
+
+  // ── Engine glow sprites (one per nacelle + main) ──
   const glowCanvas = document.createElement('canvas');
   glowCanvas.width = 64; glowCanvas.height = 64;
   const gCtx = glowCanvas.getContext('2d');
   const grad = gCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grad.addColorStop(0, 'rgba(100,200,255,1)');
-  grad.addColorStop(0.15, 'rgba(80,180,255,0.7)');
-  grad.addColorStop(0.4, 'rgba(60,140,220,0.2)');
-  grad.addColorStop(1, 'rgba(40,100,180,0)');
+  grad.addColorStop(0, 'rgba(100,210,255,1)');
+  grad.addColorStop(0.12, 'rgba(80,190,255,0.8)');
+  grad.addColorStop(0.35, 'rgba(60,150,240,0.25)');
+  grad.addColorStop(1, 'rgba(40,100,200,0)');
   gCtx.fillStyle = grad;
   gCtx.fillRect(0, 0, 64, 64);
   const glowTex = new THREE.CanvasTexture(glowCanvas);
-  const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: glowTex, transparent: true, opacity: 0.8,
-    blending: THREE.AdditiveBlending, depthWrite: false,
-  }));
-  glowSprite.scale.setScalar(0.18);
-  glowSprite.position.set(0, 0, -0.2); // behind hull
-  group.add(glowSprite);
+  const makeGlow = (x, y, z, size) => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    s.scale.setScalar(size);
+    s.position.set(x, y, z);
+    return s;
+  };
+  group.add(makeGlow(0, 0, -0.16, 0.14));     // main engine
+  group.add(makeGlow(0.1, -0.01, -0.13, 0.09)); // left nacelle
+  group.add(makeGlow(-0.1, -0.01, -0.13, 0.09)); // right nacelle
+
+  // ── Hull accent stripe (thin ring around body) ──
+  const stripGeo = new THREE.TorusGeometry(0.09, 0.004, 4, 16);
+  stripGeo.rotateX(Math.PI / 2);
+  const stripMat = new THREE.MeshBasicMaterial({ color: 0x50ccee });
+  const strip = new THREE.Mesh(stripGeo, stripMat);
+  strip.position.set(0, 0, 0.02);
+  group.add(strip);
 
   group.renderOrder = 5;
   systemGroup.add(group);
@@ -99,8 +160,15 @@ export function createShipMesh() {
 
 export function positionShipAtStar(starRadius) {
   if (!app.shipMesh) return;
-  app.shipMesh.position.set(starRadius + 2, 0.5, 0);
-  app.shipMesh.lookAt(0, 0.5, 0); // face star initially
+  // Place ship beyond the outermost planet orbit
+  let maxOrbit = starRadius + 2;
+  for (const p of app.systemPlanets) {
+    if (p.data.orbitRadius > maxOrbit) maxOrbit = p.data.orbitRadius;
+  }
+  const r = maxOrbit + 6;
+  const angle = Math.random() * Math.PI * 2;
+  app.shipMesh.position.set(Math.cos(angle) * r, 0.5, Math.sin(angle) * r);
+  app.shipMesh.lookAt(0, 0.5, 0); // face star
 }
 
 export function flyShipToPlanet(targetEntry, onArrive) {
@@ -108,20 +176,20 @@ export function flyShipToPlanet(targetEntry, onArrive) {
   if (app.shipFlightAnim) return; // already flying
 
   const startPos = app.shipMesh.position.clone();
-  const endPos = targetEntry.mesh.position.clone();
-  endPos.y += targetEntry.data.visualSize * 1.5; // hover slightly above planet
+  // Get live planet position + hover offset for initial distance estimate
+  const hoverY = targetEntry.data.visualSize * 1.5;
+  const liveEnd = targetEntry.mesh.position.clone();
+  liveEnd.y += hoverY;
 
-  const dist = startPos.distanceTo(endPos);
-  const arcHeight = dist * CONFIG.ship.arcHeightFactor;
-  const controlPos = new THREE.Vector3().lerpVectors(startPos, endPos, 0.5);
-  controlPos.y += arcHeight;
-
+  const dist = startPos.distanceTo(liveEnd);
   const effects = getUpgradeEffects(app.state);
   const speedMult = effects.systemSpeedMult;
   const duration = Math.max(CONFIG.ship.flightSpeedMin, Math.min(CONFIG.ship.flightSpeedMax, dist * 0.4)) / speedMult;
 
   app.shipFlightAnim = {
-    startPos, endPos, controlPos,
+    startPos,
+    hoverY,
+    arcHeightBase: dist * CONFIG.ship.arcHeightFactor,
     startTime: performance.now() / 1000,
     duration,
     targetEntry,
@@ -146,12 +214,21 @@ export function updateShip(time, deltaTime) {
     const rawT = Math.min(elapsed / anim.duration, 1);
     const t = easeInOutCubic(rawT);
 
+    // Recompute end position from LIVE planet mesh (planets orbit!)
+    _liveEnd.copy(anim.targetEntry.mesh.position);
+    _liveEnd.y += anim.hoverY;
+
+    // Recompute control point (midpoint raised by arc height)
+    const controlPos = _desiredTarget; // reuse temp vector
+    controlPos.lerpVectors(anim.startPos, _liveEnd, 0.5);
+    controlPos.y += anim.arcHeightBase;
+
     // Current position on bezier
-    evalBezier(anim.startPos, anim.controlPos, anim.endPos, t, app.shipMesh.position);
+    evalBezier(anim.startPos, controlPos, _liveEnd, t, app.shipMesh.position);
 
     // Look along curve tangent
     const tNext = Math.min(t + 0.02, 1);
-    evalBezier(anim.startPos, anim.controlPos, anim.endPos, tNext, _tangent);
+    evalBezier(anim.startPos, controlPos, _liveEnd, tNext, _tangent);
     _lookAt.copy(_tangent);
     if (_lookAt.distanceTo(app.shipMesh.position) > 0.001) {
       app.shipMesh.lookAt(_lookAt);
@@ -159,13 +236,12 @@ export function updateShip(time, deltaTime) {
 
     // Camera follow during flight
     const sc = CONFIG.ship;
-    _desiredTarget.copy(app.shipMesh.position);
     _desiredCam.set(
       app.shipMesh.position.x + sc.cameraOffset[0],
       app.shipMesh.position.y + sc.cameraOffset[1],
       app.shipMesh.position.z + sc.cameraOffset[2]
     );
-    controls.target.lerp(_desiredTarget, sc.cameraFollowLerp);
+    controls.target.lerp(app.shipMesh.position, sc.cameraFollowLerp);
     camera.position.lerp(_desiredCam, sc.cameraFollowLerp * 0.8);
 
     // Spawn thruster particles while flying
@@ -181,7 +257,7 @@ export function updateShip(time, deltaTime) {
       if (cb) cb(entry);
     }
   } else {
-    // If docked at a planet, follow its orbit
+    // If docked at a planet, follow its orbit (ship only, not camera)
     const dockedId = app.shipMesh.userData.dockedPlanetId;
     if (dockedId !== undefined && dockedId !== null) {
       const entry = app.systemPlanets.find(p => p.data.id === dockedId);
@@ -190,6 +266,8 @@ export function updateShip(time, deltaTime) {
         app.shipMesh.position.set(pos.x, pos.y + entry.data.visualSize * 1.5, pos.z);
       }
     }
+    // Always keep orbit center on the star (origin)
+    controls.target.lerp(_origin, 0.05);
   }
 
   // Update thruster particle ages

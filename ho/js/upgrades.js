@@ -23,7 +23,7 @@ export const UPGRADE_TREE = {
     tiers: [
       { id: 'tank_expansion', label: 'Tank Expansion', cost: 60, description: 'Increase max fuel by 50%' },
       { id: 'harvest_bonus', label: 'Fuel Harvester', cost: 130, description: '+50% fuel gained from planets' },
-      { id: 'solar_regen', label: 'Solar Collector', cost: 220, description: 'Slowly regenerate fuel in system view' },
+      { id: 'solar_regen', label: 'Solar Collector', cost: 220, description: '3x faster stellar fuel absorption' },
     ],
   },
   comms: {

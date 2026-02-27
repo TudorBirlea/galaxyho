@@ -66,9 +66,10 @@ export function addData(amount, state) {
 
 export function updateSolarRegen(deltaTime, state) {
   const effects = getUpgradeEffects(state);
-  if (!effects.solarRegen) return;
+  const baseRate = CONFIG.gameplay.baseRegenRate;
+  const rate = effects.solarRegen ? effects.regenRate : baseRate;
   const max = getMaxFuel(state);
-  state.fuel = Math.min(max, state.fuel + effects.regenRate * deltaTime);
+  state.fuel = Math.min(max, state.fuel + rate * deltaTime);
 }
 
 export function getFuelForPlanetType(planetType) {

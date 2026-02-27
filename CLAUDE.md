@@ -91,11 +91,12 @@ _extras/               — Reference files, backups, experiments (gitignored)
 - Stellar remnants: black holes (dedicated BLACK_HOLE_FRAG with Schwarzschild geodesic ray tracing, Velocity Verlet integration, conserved angular momentum h², Novikov-Thorne temperature profile, blackbody color ramp, Doppler beaming on temperature, gravitational redshift, higher-order Einstein ring images via multi-crossing tracking, Einstein ring brightening via dFdx/dFdy, improved adaptive stepping near photon sphere), neutron stars (STAR_FRAG with extreme params + rotating ConeGeometry beams), white dwarfs (STAR_FRAG with small radius + high temp)
 - Remnant galaxy rendering: aRemnantType attribute on galaxy Points, black holes rendered with dark center + orange accretion ring in fragment shader
 - Font: SF Mono / Fira Code / Consolas monospace (sci-fi terminal aesthetic)
-- Ship: THREE.Group (ConeGeometry hull + PlaneGeometry wings + Sprite engine glow), scaled by CONFIG.ship.meshScale
-  - Flight: quadratic Bezier arc (start → control point above midpoint → target), duration scales with distance (0.8–3.0s), easeInOutCubic
+- Ship: THREE.Group (dual-cone fuselage + cockpit dome + delta wings + dorsal fin + engine nacelles + 3 glow sprites + hull accent stripe), scaled by CONFIG.ship.meshScale
+  - Entry: spawns beyond outermost planet orbit at random angle (arrives from interstellar space)
+  - Flight: quadratic Bezier arc with live target tracking (recomputes end position from orbiting planet each frame), duration scales with distance (0.8–3.0s), easeInOutCubic
   - Thruster trail: 60-particle Points with age/alpha attributes, AdditiveBlending, spawns during flight, fades when idle
-  - Camera follow: controls.target lerps toward ship position during flight (loose follow, OrbitControls stays active)
-  - Docked orbit: ship follows planet position when parked at a planet
+  - Camera follow: controls.target lerps toward ship during flight, returns to star (origin) when idle (orbit center always on star)
+  - Docked orbit: ship follows planet position when parked, camera stays centered on star
 - Events: 37 templates (12 universal + 3-5 per planet type), seeded RNG per planet (hashInt(seed, 9999)), ~70% chance
   - Template structure: title, description ({planetName}/{starName} interpolation), planetTypes filter, rarity weighting (common=6, uncommon=3, rare=1), 2-3 choices with risk/successRate/outcome ranges
   - Resolution: seeded roll against successRate (modified by Deep Scanner +10%), interpolated reward ranges
@@ -104,9 +105,9 @@ _extras/               — Reference files, backups, experiments (gitignored)
 - Upgrades: 4 categories × 3 sequential tiers (must own tier N-1 to buy tier N), currency is Data
   - Engines: Fuel Efficiency (-25% cost) → Extended Range (2-hop jumps) → Warp Mk II (-50% cost + faster flight)
   - Sensors: Event Scanner (see indicators) → Deep Scanner (+10% success) → Orbital Scan (scan without flying)
-  - Fuel Systems: Tank Expansion (+50% capacity) → Fuel Harvester (+50% yield) → Solar Collector (passive regen)
+  - Fuel Systems: Tank Expansion (+50% capacity) → Fuel Harvester (+50% yield) → Solar Collector (3× stellar absorption rate)
   - Communications: Diplomacy Suite (extra choices) → Trade Protocols (+30% data) → Beacon Network (reveal 2-hop stars)
-- Fuel economy: distance_ly × 3.5 × fuelCostMult, planet yields vary by type (gas_giant highest, lava lowest)
+- Fuel economy: distance_ly × 3.5 × fuelCostMult, planet yields vary by type (gas_giant highest, lava lowest), passive stellar absorption (0.15/s base, 0.5/s with Solar Collector upgrade)
 - Emergency jump: free teleport to home star (star 0) when fuel insufficient for any reachable jump
 - Glassmorphism UI: rgba backgrounds with backdrop-filter blur for event cards, upgrade panel, outcome overlay
 
@@ -149,3 +150,4 @@ terran, desert, ice, gas_giant, lava, ocean, water — hybrid texture-mapped wit
 - **v3.9.1**: Galaxy tooltip — asteroid belt presence shown in star detail tooltip (pre-computed during galaxy generation, gold-colored indicator)
 - **v3.9**: Asteroid belt overhaul — 8 improvements: Keplerian per-particle orbital speeds (inner faster), irregular rocky shapes (4-lobe angular sine distortion in fragment shader), Gaussian vertical distribution (CLT clustering near midplane), 3 composition color types (silicate/carbonaceous/metallic), phase-angle star lighting, additive dust glow layer (RingGeometry + noise shader), 4 large tumbling rocks (IcosahedronGeometry + vertex displacement), rare collision dust bursts (~12s interval, 25-particle expanding puffs)
 - **v5.0**: Gameplay update — full gameplay loop added: flyable ship in system view (Bezier arc flight, thruster particles, camera follow), fuel resource (consumed on star jumps, collected from planets by type), data resource (earned from scanning + events, spent on upgrades), 37 procedural event templates (12 universal + per-type, seeded per planet, 2-3 risk/reward choices), 12-upgrade tree (Engines/Sensors/Fuel Systems/Communications × 3 tiers), emergency jump to home star, event indicator sprites, glassmorphism UI (fuel gauge, data counter, event cards, outcome overlays, upgrade panel); 4 new modules (gameplay.js, ship.js, events.js, upgrades.js), state migration for old saves
+- **v5.1**: Ship & camera polish — redesigned ship mesh (dual-cone fuselage, cockpit dome, delta wings, dorsal fin, engine nacelles, 3 glow sprites, hull accent stripe), ship spawns at system exterior beyond outermost orbit, live planet tracking during flight (fixes ship flying to stale position), camera orbit always centered on star (fixes rotation around ship), system view minDist reduced to 4, passive stellar fuel absorption (0.15/s base, 0.5/s with Solar Collector upgrade)
