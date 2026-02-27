@@ -20,11 +20,14 @@ const hudShip = document.getElementById('hud-ship');
 const hudProgress = document.getElementById('hud-progress');
 export const overlay = document.getElementById('overlay');
 const lockMsg = document.getElementById('lock-msg');
-// v5 gameplay UI elements
-const hudFuelWrap = document.getElementById('hud-fuel-wrap');
-const hudFuelFill = document.getElementById('hud-fuel-fill');
-const hudFuelVal = document.getElementById('hud-fuel-val');
-const hudDataEl = document.getElementById('hud-data');
+// Ship status panel elements
+const shipPanel = document.getElementById('ship-panel');
+const spLocation = document.getElementById('sp-location');
+const spFuelFill = document.getElementById('sp-fuel-fill');
+const spFuelVal = document.getElementById('sp-fuel-val');
+const spDataVal = document.getElementById('sp-data-val');
+const spStarsVal = document.getElementById('sp-stars-val');
+const spScannedVal = document.getElementById('sp-scanned-val');
 const eventCard = document.getElementById('event-card');
 const ecTitle = document.getElementById('ec-title');
 const ecDescription = document.getElementById('ec-description');
@@ -135,10 +138,13 @@ export function updateHUD(galaxy, state) {
   const shipStar = galaxy.stars[state.shipStarId];
   if (shipStar) {
     hudShip.textContent = `Docked at ${shipStar.name}`;
+    spLocation.textContent = shipStar.name;
   }
   if (hudVersion) hudVersion.textContent = `v${VERSION}`;
   updateFuelGauge(state);
   updateDataDisplay(state);
+  spStarsVal.textContent = `${state.visitedStars.size}/${galaxy.stars.length}`;
+  spScannedVal.textContent = `${state.scannedPlanets.size}`;
 }
 
 export function showLockMessage(msg) {
@@ -209,25 +215,23 @@ export function showJournalNotice() {
 export function updateFuelGauge(state) {
   const max = getMaxFuel(state);
   const pct = Math.max(0, Math.min(100, (state.fuel / max) * 100));
-  hudFuelFill.style.width = pct + '%';
-  hudFuelVal.textContent = Math.round(state.fuel);
-  // Color: green > 50%, amber 25-50%, red < 25%
-  if (pct > 50) hudFuelFill.style.background = 'rgba(80,200,140,0.5)';
-  else if (pct > 25) hudFuelFill.style.background = 'rgba(220,180,60,0.5)';
-  else hudFuelFill.style.background = 'rgba(220,80,60,0.5)';
-  // Low fuel pulse
-  hudFuelWrap.classList.toggle('low', state.fuel < CONFIG.gameplay.lowFuelThreshold);
+  spFuelFill.style.width = pct + '%';
+  spFuelVal.textContent = `${Math.round(state.fuel)}/${max}`;
+  if (pct > 50) spFuelFill.style.background = 'rgba(80,200,140,0.5)';
+  else if (pct > 25) spFuelFill.style.background = 'rgba(220,180,60,0.5)';
+  else spFuelFill.style.background = 'rgba(220,80,60,0.5)';
+  shipPanel.classList.toggle('low-fuel', state.fuel < CONFIG.gameplay.lowFuelThreshold);
 }
 
 // ── v5: Data display ──
 
 export function updateDataDisplay(state) {
-  hudDataEl.textContent = `Data: ${state.data}`;
+  spDataVal.textContent = state.data;
 }
 
 export function flashData() {
-  hudDataEl.classList.add('flash');
-  setTimeout(() => hudDataEl.classList.remove('flash'), 400);
+  spDataVal.classList.add('flash');
+  setTimeout(() => spDataVal.classList.remove('flash'), 400);
 }
 
 // ── v5: Event card ──

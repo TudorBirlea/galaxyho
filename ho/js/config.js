@@ -1,4 +1,4 @@
-export const VERSION = '5.0';
+export const VERSION = '5.1';
 
 export const CONFIG = {
   galaxy: {
