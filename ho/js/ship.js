@@ -201,87 +201,51 @@ export function positionShipAtStar(starRadius) {
   app.shipOrbit = createOrbitState(parkR, angle, sc.parkingOrbitSpeed);
 }
 
-// ── Gravity simulation helpers ──
+// ── Parametric Hohmann transfer helpers ──
 
-function deriveGMStar() {
-  if (app.systemPlanets.length === 0) return 50;
-  let ref = app.systemPlanets[0];
-  for (const p of app.systemPlanets) {
-    if (p.data.orbitRadius < ref.data.orbitRadius) ref = p;
+// Solve Kepler's equation M = E - e·sin(E) for eccentric anomaly E
+function solveKepler(M, e) {
+  let E = M;
+  for (let i = 0; i < 15; i++) {
+    const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    E -= dE;
+    if (Math.abs(dE) < 1e-12) break;
   }
-  const r = ref.data.orbitRadius;
-  const omega = ref.data.orbitSpeed;
-  return omega * omega * r * r * r;
+  return E;
 }
 
-function computeGravAccel(px, pz, GM_star, time) {
-  const gc = CONFIG.ship.gravity;
-  let ax = 0, az = 0;
+// Position on a Hohmann half-ellipse at given progress (0 = departure, 1 = arrival)
+// The ship always travels prograde (counterclockwise) through π radians.
+// Returns { x, z, angle, r }
+function hohmannPosition(progress, r1, r2, departureAngle, goingOutward) {
+  const a = (r1 + r2) / 2;
+  const e = Math.abs(r2 - r1) / (r1 + r2);
 
-  // Star gravity (at origin)
-  const r2star = px * px + pz * pz;
-  const rStar = Math.sqrt(r2star);
-  if (rStar > gc.starSoftening) {
-    const rStar3 = r2star * rStar;
-    ax -= GM_star * px / rStar3;
-    az -= GM_star * pz / rStar3;
-  }
+  // Mean anomaly: outward 0→π (periapsis→apoapsis), inward π→2π (apoapsis→periapsis)
+  const M = goingOutward ? progress * Math.PI : Math.PI + progress * Math.PI;
 
-  // Planet gravity
-  for (const p of app.systemPlanets) {
-    const pa = p.data.orbitPhase + time * p.data.orbitSpeed;
-    const ppx = Math.cos(pa) * p.data.orbitRadius;
-    const ppz = Math.sin(pa) * p.data.orbitRadius;
+  const E = solveKepler(M, e);
 
-    const dx = px - ppx;
-    const dz = pz - ppz;
-    const dist2 = dx * dx + dz * dz;
-    const soft = p.data.visualSize * gc.planetSofteningMult;
-    const dist2Soft = dist2 + soft * soft;
-    const dist = Math.sqrt(dist2Soft);
-    const dist3 = dist2Soft * dist;
+  // True anomaly from eccentric anomaly
+  const nu = 2 * Math.atan2(
+    Math.sqrt(1 + e) * Math.sin(E / 2),
+    Math.sqrt(1 - e) * Math.cos(E / 2)
+  );
 
-    const gm = gc.planetMassFactor * p.data.visualSize * p.data.visualSize * p.data.visualSize;
-    ax -= gm * dx / dist3;
-    az -= gm * dz / dist3;
-  }
+  // Orbital radius
+  const r = e < 1e-8 ? a : a * (1 - e * e) / (1 + e * Math.cos(nu));
 
-  return { ax, az };
-}
-
-// Gentle orbital trim — nudges the ship's velocity toward the correct
-// orbital energy, not toward the target position. This preserves the
-// natural elliptical arc while ensuring the ship reaches the right orbit.
-function computeGuidance(px, pz, vx, vz, transfer, simTime) {
-  const gc = CONFIG.ship.gravity;
-  const GM = transfer.GM_star;
-
-  // Current orbital energy: E = v²/2 - GM/r
-  const r = Math.sqrt(px * px + pz * pz);
-  const v2 = vx * vx + vz * vz;
-  const currentEnergy = v2 / 2 - GM / r;
-
-  // Target energy for a Hohmann transfer reaching r2: E = -GM / (r1 + r2)
-  const targetEnergy = -GM / (transfer.r1 + transfer.r2);
-
-  // Energy error — positive means too much energy (going too fast)
-  const energyError = currentEnergy - targetEnergy;
-
-  // Apply a small velocity-aligned correction to trim the energy
-  // Reduce speed if too much energy, increase if too little
-  const speed = Math.sqrt(v2);
-  if (speed < 0.01) return { ax: 0, az: 0 };
-
-  // Progress-based ramp: no correction at start, full at end
-  const elapsed = simTime - transfer.startTime;
-  const progress = Math.min(elapsed / transfer.duration, 1);
-  const ramp = progress * progress * progress; // cubic ramp — very gentle early
-
-  const correction = -energyError * gc.guidanceStrength * ramp;
+  // Ship's polar angle: periapsis direction + true anomaly
+  //   Outward: periapsis at departure → periapsisDir = departureAngle
+  //   Inward: apoapsis at departure → periapsisDir = departureAngle + π
+  const periapsisDir = goingOutward ? departureAngle : departureAngle + Math.PI;
+  const angle = periapsisDir + nu;
 
   return {
-    ax: (vx / speed) * correction,
-    az: (vz / speed) * correction,
+    x: Math.cos(angle) * r,
+    z: Math.sin(angle) * r,
+    angle,
+    r,
   };
 }
 
@@ -311,33 +275,18 @@ export function flyShipToPlanet(targetEntry, onArrive) {
   // Arrival radius: target planet's orbit
   const r2 = targetEntry.data.orbitRadius;
 
-  // Derive GM and compute real Hohmann half-orbit duration
-  const GM = deriveGMStar();
-  const semiMajor = (r1 + r2) / 2;
-  const hohmannDuration = Math.PI * Math.sqrt(semiMajor * semiMajor * semiMajor / GM);
-
-  // Time-warp: scale simulation time so the transfer takes ~targetRealDuration seconds
-  const gc = CONFIG.ship.gravity;
-  const targetReal = gc.targetRealDuration / speedMult;
-  const timeWarp = Math.max(1, hohmannDuration / targetReal);
-
-  // Real-time duration the player experiences
-  const duration = hohmannDuration / timeWarp;
+  // Transfer duration (configurable, scaled by speed upgrades)
+  const duration = sc.transferDuration / speedMult;
 
   orb.transfer = {
     r1,
     r2,
     targetEntry,
     onArrive,
-    goingInward: r2 < r1,
+    goingOutward: r2 > r1,
+    departureAngle: 0, // set at BURN_DEPART → TRANSFER transition
     duration,
-    timeWarp,
-    startTime: performance.now() / 1000,
-    // Gravity sim state (seeded at BURN_DEPART→TRANSFER transition)
-    posX: 0, posZ: 0,
-    velX: 0, velZ: 0,
-    GM_star: GM,
-    maxDuration: duration * gc.maxDurationMult,
+    startTime: 0,      // set at BURN_DEPART → TRANSFER transition
   };
 
   // Transition to departure burn
@@ -383,18 +332,19 @@ export function updateShip(time, deltaTime) {
       const elapsed = time - orb.transfer.burnStart;
       const bt = Math.min(elapsed / burnDur, 1);
 
-      // Ship stays roughly at current position, slight drift outward/inward
-      const driftDir = orb.transfer.goingInward ? -1 : 1;
-      const r = orb.orbitRadius + driftDir * bt * 0.3;
+      // Orbit at departure radius with heavy thrusters
+      const r = orb.orbitRadius;
       orb.orbitAngle += deltaTime * orb.orbitSpeed;
       app.shipMesh.position.set(
         Math.cos(orb.orbitAngle) * r,
         0,
         Math.sin(orb.orbitAngle) * r
       );
-      // Face slightly into transfer direction
-      const lookAngle = orb.orbitAngle + 0.1 + driftDir * bt * 0.05;
-      _lookAt.set(Math.cos(lookAngle) * r, 0, Math.sin(lookAngle) * r);
+      _lookAt.set(
+        Math.cos(orb.orbitAngle + 0.1) * r,
+        0,
+        Math.sin(orb.orbitAngle + 0.1) * r
+      );
       app.shipMesh.lookAt(_lookAt);
 
       // Heavy thruster particles during burn
@@ -403,90 +353,48 @@ export function updateShip(time, deltaTime) {
       controls.target.lerp(_origin, 0.05);
 
       if (bt >= 1) {
-        // Seed gravity simulation with Hohmann departure velocity
-        const GM = orb.transfer.GM_star;
-        const r1 = orb.transfer.r1;
-        const r2 = orb.transfer.r2;
-        const a = (r1 + r2) / 2;
-        const vTransfer = Math.sqrt(Math.abs(GM * (2 / r1 - 1 / a)));
-
-        const angle = orb.orbitAngle;
-        const shipX = Math.cos(angle) * r1;
-        const shipZ = Math.sin(angle) * r1;
-        // Prograde tangent (counterclockwise)
-        const tangentX = -Math.sin(angle);
-        const tangentZ = Math.cos(angle);
-
+        // Begin parametric Hohmann transfer from current angle
+        orb.transfer.departureAngle = orb.orbitAngle;
         orb.transfer.startTime = time;
-        orb.transfer.simTime = time;
-        orb.transfer.posX = shipX;
-        orb.transfer.posZ = shipZ;
-        orb.transfer.velX = tangentX * vTransfer;
-        orb.transfer.velZ = tangentZ * vTransfer;
         orb.state = 'transfer';
       }
       break;
     }
 
-    // ── TRANSFER: gravity simulation (Velocity Verlet, time-warped) ──
+    // ── TRANSFER: parametric Hohmann half-ellipse ──
     case 'transfer': {
       const tr = orb.transfer;
-      const gc = sc.gravity;
-      // Time-warp: simulate more physics time per real second
-      const dt_sim = Math.min(deltaTime * tr.timeWarp, 0.1);
-      const numSteps = Math.ceil(dt_sim / gc.substepDt);
-      const h = dt_sim / numSteps;
+      const elapsed = time - tr.startTime;
+      const progress = Math.max(0, Math.min(elapsed / tr.duration, 1.0));
 
-      let { posX, posZ, velX, velZ } = tr;
-      let simTime = tr.simTime || tr.startTime;
+      // Position on Hohmann half-ellipse
+      const pos = hohmannPosition(progress, tr.r1, tr.r2, tr.departureAngle, tr.goingOutward);
+      app.shipMesh.position.set(pos.x, 0, pos.z);
+      orb.orbitAngle = pos.angle;
 
-      for (let step = 0; step < numSteps; step++) {
-        // Acceleration at current position
-        const a1 = computeGravAccel(posX, posZ, tr.GM_star, simTime);
-        const g1 = computeGuidance(posX, posZ, velX, velZ, tr, simTime);
-        const ax1 = a1.ax + g1.ax;
-        const az1 = a1.az + g1.az;
-
-        // Update position
-        posX += velX * h + 0.5 * ax1 * h * h;
-        posZ += velZ * h + 0.5 * az1 * h * h;
-
-        // Acceleration at new position
-        const a2 = computeGravAccel(posX, posZ, tr.GM_star, simTime + h);
-        const g2 = computeGuidance(posX, posZ, velX, velZ, tr, simTime + h);
-
-        // Update velocity
-        velX += 0.5 * (ax1 + a2.ax + g2.ax) * h;
-        velZ += 0.5 * (az1 + a2.az + g2.az) * h;
-
-        simTime += h;
-      }
-      tr.simTime = simTime;
-
-      tr.posX = posX;
-      tr.posZ = posZ;
-      tr.velX = velX;
-      tr.velZ = velZ;
-
-      app.shipMesh.position.set(posX, 0, posZ);
-
-      // Face velocity direction
-      const speed = Math.sqrt(velX * velX + velZ * velZ);
-      if (speed > 0.01) {
-        _lookAt.set(posX + velX * 0.5, 0, posZ + velZ * 0.5);
+      // Face velocity direction (centered finite difference on the ellipse)
+      const eps = 0.002;
+      const pBefore = hohmannPosition(
+        Math.max(0, progress - eps), tr.r1, tr.r2, tr.departureAngle, tr.goingOutward
+      );
+      const pAfter = hohmannPosition(
+        Math.min(1, progress + eps), tr.r1, tr.r2, tr.departureAngle, tr.goingOutward
+      );
+      const dx = pAfter.x - pBefore.x;
+      const dz = pAfter.z - pBefore.z;
+      if (dx * dx + dz * dz > 1e-10) {
+        _lookAt.set(pos.x + dx * 100, 0, pos.z + dz * 100);
         app.shipMesh.lookAt(_lookAt);
       }
 
-      orb.orbitAngle = Math.atan2(posZ, posX);
-
-      // Thruster intensity scales with planet proximity
-      let thrusterIntensity = 0.5;
+      // Thruster particles — light coast, brighter near planets
+      let thrusterIntensity = 0.3;
       for (const p of app.systemPlanets) {
         const pa = p.data.orbitPhase + time * p.data.orbitSpeed;
         const ppx = Math.cos(pa) * p.data.orbitRadius;
         const ppz = Math.sin(pa) * p.data.orbitRadius;
-        const dx = posX - ppx, dz = posZ - ppz;
-        const dist = Math.sqrt(dx * dx + dz * dz);
+        const pdx = pos.x - ppx, pdz = pos.z - ppz;
+        const dist = Math.sqrt(pdx * pdx + pdz * pdz);
         const influence = p.data.visualSize * 3;
         if (dist < influence) {
           thrusterIntensity = Math.max(thrusterIntensity,
@@ -497,22 +405,11 @@ export function updateShip(time, deltaTime) {
 
       controls.target.lerp(_origin, 0.05);
 
-      // Arrival detection
-      const r = Math.sqrt(posX * posX + posZ * posZ);
-      const realElapsed = time - tr.startTime;
-      const arrivedAtOrbit = tr.goingInward ? (r <= tr.r2) : (r >= tr.r2);
-      const timedOut = realElapsed > tr.maxDuration;
-
-      if (arrivedAtOrbit || timedOut) {
+      // Arrival: parametric transfer complete
+      if (progress >= 1.0) {
         orb.state = 'burn_arrive';
         orb.transfer.burnStart = time;
         orb.orbitRadius = tr.r2;
-        // Snap to target orbit radius at current angle
-        const snapAngle = Math.atan2(posZ, posX);
-        app.shipMesh.position.set(
-          Math.cos(snapAngle) * tr.r2, 0, Math.sin(snapAngle) * tr.r2
-        );
-        orb.orbitAngle = snapAngle;
         orb.orbitSpeed = tr.targetEntry.data.orbitSpeed;
       }
       break;
@@ -556,11 +453,11 @@ export function updateShip(time, deltaTime) {
       const planetAngle = te.data.orbitPhase + time * te.data.orbitSpeed;
       const r = orb.orbitRadius;
 
-      // Advance ship slightly faster than planet to catch up
+      // Always approach prograde (counterclockwise) — never reverse direction
       let angleDiff = normalizeAngle(planetAngle - orb.orbitAngle);
-      const catchupStep = sc.approachSpeed * deltaTime;
-      if (Math.abs(angleDiff) < catchupStep * 2) {
-        // Close enough — snap and dock
+      if (angleDiff < 0) angleDiff += 2 * Math.PI; // ensure forward pursuit
+      if (angleDiff < 0.08) {
+        // Close enough — dock
         orb.orbitAngle = planetAngle;
         orb.state = 'docked';
         orb.dockedPlanetId = te.data.id;
@@ -571,8 +468,8 @@ export function updateShip(time, deltaTime) {
           orb.transfer.onArrive(te);
         }
       } else {
-        // Approach: add catchup to base orbital speed
-        orb.orbitAngle += (te.data.orbitSpeed + sc.approachSpeed * Math.sign(angleDiff)) * deltaTime;
+        // Orbit prograde faster than the planet to catch up
+        orb.orbitAngle += (te.data.orbitSpeed + sc.approachSpeed) * deltaTime;
       }
 
       app.shipMesh.position.set(

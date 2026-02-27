@@ -3,9 +3,9 @@
 ## What Is This
 A 3D space exploration game built with Three.js. The player discovers a procedurally generated galaxy cluster by cluster, flying a ship between star systems and scanning planets for fuel and data. Features procedural events with meaningful choices and a 12-upgrade progression tree.
 
-## Current Version: v6.3
+## Current Version: v6.4
 - **Galaxy View**: ~100 stars with parallax background starfield (3 layers), volumetric nebulae (3 layers per cloud, billboarded), bloom tint pass preserving spectral colors, dark dust lanes (FBM noise, NormalBlending), pulsating variable stars (~4%), stellar remnants (black holes, neutron stars, white dwarfs), particle stream warp trails on visited connections, asteroid belt & comet activity indicators in star tooltips
-- **System View**: Ray-marched atmospheric scattering on planets, planet shadow on rings, configurable star surface rotation, decorative moons orbiting planets, enhanced asteroid belts, single comet per system with dual tails; black hole gravitational lensing shader, neutron star rotating beam cones, white dwarf rendering; **flyable ship** (orbital state machine: parking orbit → n-body gravity transfer → approach → docked orbit, 60-particle thruster trail, burn phases with 5× particle intensity, proximity thruster boost near planets), **event indicator sprites** (pulsing gold dots when Event Scanner upgrade active), **planet status rings** (3-arc shader rings showing scan/mine/explore completion per planet)
+- **System View**: Ray-marched atmospheric scattering on planets, planet shadow on rings, configurable star surface rotation, decorative moons orbiting planets, enhanced asteroid belts, single comet per system with dual tails; black hole gravitational lensing shader, neutron star rotating beam cones, white dwarf rendering; **flyable ship** (orbital state machine: parking orbit → parametric Hohmann ellipse transfer → approach → docked orbit, 60-particle thruster trail, burn phases with 5× particle intensity, proximity thruster boost near planets), **event indicator sprites** (pulsing gold dots when Event Scanner upgrade active), **planet status rings** (3-arc shader rings showing scan/mine/explore completion per planet)
 - **Gameplay**: Fuel resource (consumed on star jumps, collected from planets by type), Data resource (earned from scanning + events, spent on upgrades), 36 procedural event templates (12 universal + per-type, seeded per planet, 2-3 choices with risk/reward), 12-upgrade tree (4 categories × 3 tiers: Engines, Sensors, Fuel Systems, Communications), emergency jump to home star when stranded
 - **Post-processing**: Film grain overlay, vignette, bloom tint (galaxy view), UnrealBloomPass
 - **Planet Info Cards**: Slide-up panel with type, size, habitability, metals, atmosphere, specials, **3 action buttons** (Scan/Mine/Explore) with progress bars and inline reward display
@@ -38,7 +38,7 @@ ho/js/state.js         — Save/load state to LocalStorage (fuel, data, upgrades
 ho/js/app.js           — Shared app state singleton
 ho/js/utils.js         — mulberry32 PRNG, easing functions
 ho/js/gameplay.js      — Fuel/data resource logic, upgrade effects, solar regen
-ho/js/ship.js          — Ship mesh, Bezier flight, thruster particles, camera follow
+ho/js/ship.js          — Ship mesh, parametric Hohmann transfer, thruster particles, orbital state machine
 ho/js/events.js        — 36 event templates, seeded generation, choice resolution
 ho/js/upgrades.js      — Upgrade tree (4×3), purchase logic, effect definitions
 ho/textures/           — Planet equirectangular textures (16 maps)
@@ -94,15 +94,15 @@ _extras/               — Reference files, backups, experiments (gitignored)
 - Ship: THREE.Group (dual-cone fuselage + cockpit dome + delta wings + dorsal fin + engine nacelles + 3 glow sprites + hull accent stripe), scaled by CONFIG.ship.meshScale
   - Orbital state machine: PARKING → BURN_DEPART → TRANSFER → BURN_ARRIVE → APPROACH → DOCKED
   - Entry: spawns in circular parking orbit around star (beyond outermost planet + buffer), tangent-facing, counterclockwise
-  - Transfer: real-time n-body gravity simulation (Velocity Verlet, ~5 substeps/frame at 250Hz); star + all planet gravitational forces computed each substep; ship follows elliptical Hohmann arcs around star, with natural gravitational slingshots near planets
-  - Time warp: real Hohmann half-orbit duration computed from GM, then compressed to ~5 real seconds via simulation time multiplier (timeWarp = hohmannDuration / targetRealDuration); ship traces the full elliptical arc at accelerated speed
-  - Gravity model: GM_star derived from innermost planet's orbit (omega²×r³), GM_planet = planetMassFactor × visualSize³ (gas giants deflect, small planets negligible); softened gravity prevents singularities
-  - Guidance: energy-based orbital trim (not position-homing) — compares ship's orbital energy to target Hohmann energy, applies gentle velocity-aligned correction; cubic ramp (progress³) ensures invisible early, corrective late
-  - Initial velocity: Hohmann departure ΔV (v = √(GM×(2/r1 - 1/a))) in prograde tangent direction, seeded at end of BURN_DEPART
-  - Arrival: when ship crosses target orbit radius or timeout (2× real duration), snaps to orbit and transitions to BURN_ARRIVE
+  - Transfer: parametric Hohmann half-ellipse — ship position computed analytically from Kepler's equation each frame (no simulation, no numerical integration); guaranteed smooth trajectory from departure radius to target radius through exactly π radians prograde
+  - Kepler solver: Newton-Raphson iteration (15 max) on M = E - e·sin(E), then E → true anomaly ν → polar position (r, θ); correct speed variation (fast at periapsis, slow at apoapsis)
+  - Ellipse parameters: semi-major axis a = (r1+r2)/2, eccentricity e = |r2-r1|/(r1+r2); outward transfers depart from periapsis, inward from apoapsis
+  - Duration: fixed configurable `transferDuration` (6s default), scaled by speed upgrades
+  - Facing: centered finite-difference on the parametric curve (ε=0.002) gives smooth velocity direction
+  - Arrival: progress reaches 1.0 → exact position at (r2, departureAngle+π), no snap needed
   - Thruster visuals: intensity scales with planet proximity (up to 5× near massive bodies)
   - Burns: 0.35s departure/arrival burns with 5× thruster particle intensity
-  - Approach: ship orbits at target radius, catches up to planet angular position, snaps to dock on convergence
+  - Approach: ship orbits at target radius prograde-only (never reverses), catches up to planet angular position, docks on convergence
   - Docked orbit: ship orbits planet at 2.5× visualSize radius with 0.3 tilt, tangent-facing via lookAt(angle+0.1), camera stays centered on star
   - Thruster trail: 60-particle Points with age/alpha attributes, AdditiveBlending, intensity varies by flight phase
   - Camera: no follow — camera stays at user's perspective during flight, controls.target always lerps to star origin
@@ -178,3 +178,4 @@ terran, desert, ice, gas_giant, lava, ocean, water — hybrid texture-mapped wit
 - **v6.1**: Single comet & gravity slingshots — comets limited to max 1 per system (was 1-3); ship transfers now use gravity slingshot paths (cubic Bezier curved toward intermediate planets) when a planet exists between departure and target orbits, with thruster boost at closest approach; cache-busting query strings updated to v6.0 across all imports
 - **v6.2**: N-body gravity transfers — replaced Bezier/Hohmann path evaluation with real-time gravitational simulation: Velocity Verlet integration (~5 substeps/frame), star + all planet forces computed each step, GM_star derived from innermost planet orbit, GM_planet from visualSize³; gravitational slingshots emerge naturally from physics; guidance correction ensures arrival; thruster intensity scales with planet proximity; removed old evalTransfer/evalSlingshotTransfer/findSlingshotPlanet functions
 - **v6.3**: Proper elliptical orbits — fixed ship flying directly instead of arcing around star: added time-warp (real Hohmann duration compressed to ~5s real time via simulation multiplier so ship traces full elliptical arc); replaced homing-missile guidance with energy-based orbital trim (compares orbital energy to target Hohmann, corrects velocity magnitude not direction); removed transferSpeedScale (replaced by targetRealDuration); timeout extended to 2× real duration
+- **v6.4**: Smooth parametric transfers — replaced n-body gravity simulation with analytical Hohmann half-ellipse: ship position computed from Kepler's equation each frame (Newton-Raphson solver, true anomaly → polar coordinates), guaranteeing smooth continuous trajectory with correct speed variation (fast at periapsis, slow at apoapsis); eliminated teleporting (no radius-snap on arrival — parametric progress reaches 1.0 at exact target position), direction reversal (approach phase always prograde), and multi-orbit circling (parametric path is exactly one half-ellipse); removed gravity config block (7 constants), added single `transferDuration: 6.0`; simplified BURN_DEPART (no velocity seeding or drift)
