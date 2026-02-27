@@ -1,6 +1,6 @@
-import { mulberry32, hashInt, lerp } from './utils.js?v=5.0';
-import { CONFIG } from './config.js?v=5.0';
-import { getUpgradeEffects } from './gameplay.js?v=5.0';
+import { mulberry32, hashInt, lerp } from './utils.js?v=6.0';
+import { CONFIG } from './config.js?v=6.0';
+import { getUpgradeEffects } from './gameplay.js?v=6.0';
 
 // ── Event Templates ──
 // Each template: { id, title, description, planetTypes (null=universal), rarity, choices[] }

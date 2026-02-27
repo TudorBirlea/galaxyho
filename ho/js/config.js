@@ -1,4 +1,4 @@
-export const VERSION = '6.0';
+export const VERSION = '6.1';
 
 export const CONFIG = {
   galaxy: {
@@ -113,7 +113,7 @@ export const CONFIG = {
   comets: {
     chance: 0.45,
     minPerSystem: 1,
-    maxPerSystem: 3,
+    maxPerSystem: 1,
     semiMajorMin: 10,
     semiMajorMax: 22,
     eccentricity: [0.70, 0.92],
@@ -170,6 +170,10 @@ export const CONFIG = {
     dockedOrbitMult: 2.5,
     dockedOrbitTilt: 0.3,
     dockedOrbitSpeed: 0.5,
+    slingshotPull: 0.6,
+    slingshotDurationMult: 1.15,
+    slingshotMinGap: 0.5,
+    slingshotBoost: 3,
   },
   remnants: {
     blackHoleCount: [1, 2],

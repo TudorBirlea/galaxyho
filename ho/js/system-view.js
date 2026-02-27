@@ -1,16 +1,16 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js?v=5.0';
+import { CONFIG } from './config.js?v=6.0';
 import { STAR_VERT, STAR_FRAG, PLANET_VERT, PLANET_FRAG, RING_VERT, RING_FRAG,
          ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG,
          COMET_TAIL_VERT, COMET_TAIL_FRAG,
-         STATUS_RING_VERT, STATUS_RING_FRAG } from './shaders.js?v=5.0';
-import { mulberry32 } from './utils.js?v=5.0';
-import { generatePlanets, generateAsteroidBelt, generateComets } from './data.js?v=5.0';
-import { systemGroup, camera, renderer } from './engine.js?v=5.0';
-import { app } from './app.js?v=5.0';
-import { createShipMesh, positionShipAtStar, updateShip, clearShip } from './ship.js?v=5.0';
-import { hashInt } from './utils.js?v=5.0';
-import { getUpgradeEffects } from './gameplay.js?v=5.0';
+         STATUS_RING_VERT, STATUS_RING_FRAG } from './shaders.js?v=6.0';
+import { mulberry32 } from './utils.js?v=6.0';
+import { generatePlanets, generateAsteroidBelt, generateComets } from './data.js?v=6.0';
+import { systemGroup, camera, renderer } from './engine.js?v=6.0';
+import { app } from './app.js?v=6.0';
+import { createShipMesh, positionShipAtStar, updateShip, clearShip } from './ship.js?v=6.0';
+import { hashInt } from './utils.js?v=6.0';
+import { getUpgradeEffects } from './gameplay.js?v=6.0';
 
 // Texture cache — shared across system visits
 const textureCache = {};

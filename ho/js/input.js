@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { renderer, camera } from './engine.js?v=5.0';
-import { app } from './app.js?v=5.0';
+import { renderer, camera } from './engine.js?v=6.0';
+import { app } from './app.js?v=6.0';
 import { showTooltip, hideTooltip, showInfoCard, hideInfoCard, showLockMessage,
          hudLocation, ttEnter, ttJump, backBtn, icClose, journalBtn, journalClose,
-         toggleJournal, renderJournal } from './ui.js?v=5.0';
-import { starDistance } from './data.js?v=5.0';
-import { drawMinimap } from './minimap.js?v=5.0';
-import { capturePlanetSnapshot } from './system-view.js?v=5.0';
-import { flyShipToPlanet, isShipFlying, getDockedPlanetId } from './ship.js?v=5.0';
-import { getUpgradeEffects } from './gameplay.js?v=5.0';
+         toggleJournal, renderJournal } from './ui.js?v=6.0';
+import { starDistance } from './data.js?v=6.0';
+import { drawMinimap } from './minimap.js?v=6.0';
+import { capturePlanetSnapshot } from './system-view.js?v=6.0';
+import { flyShipToPlanet, isShipFlying, getDockedPlanetId } from './ship.js?v=6.0';
+import { getUpgradeEffects } from './gameplay.js?v=6.0';
 
 function isStarReachable(starId) {
   if (app.state.reachableStars.has(starId)) return true;

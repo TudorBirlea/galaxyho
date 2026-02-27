@@ -1,25 +1,25 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js?v=5.0';
-import { generateGalaxy, generatePlanets, starDistance } from './data.js?v=5.0';
+import { CONFIG } from './config.js?v=6.0';
+import { generateGalaxy, generatePlanets, starDistance } from './data.js?v=6.0';
 import { camera, controls, composer, clock, galaxyGroup, systemGroup, bloomPass,
-         bloomTintPass, grainPass } from './engine.js?v=5.0';
-import { createState, saveState, loadState } from './state.js?v=5.0';
-import { app } from './app.js?v=5.0';
-import { easeInOutCubic } from './utils.js?v=5.0';
+         bloomTintPass, grainPass } from './engine.js?v=6.0';
+import { createState, saveState, loadState } from './state.js?v=6.0';
+import { app } from './app.js?v=6.0';
+import { easeInOutCubic } from './utils.js?v=6.0';
 import { hideTooltip, hideInfoCard, updateHUD, hudLocation, backBtn, overlay,
          renderJournal, showJournalNotice, updateFuelGauge, updateDataDisplay,
          flashData, showLockMessage, showEventCard, hideEventCard, showOutcome,
          showUpgradePanel, hideUpgradePanel, upgradeBtn, upgradeClose,
-         showSystemPanel, hideSystemPanel, updateSystemPanel } from './ui.js?v=5.0';
-import { buildGalaxyView } from './galaxy-view.js?v=5.0';
-import { buildSystemView, clearSystemView, updateSystemView } from './system-view.js?v=5.0';
-import { setupInput } from './input.js?v=5.0';
-import { drawMinimap } from './minimap.js?v=5.0';
+         showSystemPanel, hideSystemPanel, updateSystemPanel } from './ui.js?v=6.0';
+import { buildGalaxyView } from './galaxy-view.js?v=6.0';
+import { buildSystemView, clearSystemView, updateSystemView } from './system-view.js?v=6.0';
+import { setupInput } from './input.js?v=6.0';
+import { drawMinimap } from './minimap.js?v=6.0';
 import { calculateJumpFuelCost, canJump, consumeFuel, addFuel, addData,
          rollPlanetFuel, rollScanData, rollMiningYield, rollExploreData,
-         updateSolarRegen, getUpgradeEffects } from './gameplay.js?v=5.0';
-import { updateShip } from './ship.js?v=5.0';
-import { generatePlanetEvent, resolveChoice } from './events.js?v=5.0';
+         updateSolarRegen, getUpgradeEffects } from './gameplay.js?v=6.0';
+import { updateShip } from './ship.js?v=6.0';
+import { generatePlanetEvent, resolveChoice } from './events.js?v=6.0';
 
 // ── Transition state ──
 let transAnim = null;
@@ -461,7 +461,7 @@ function animate() {
 // ── v5: Upgrade panel wiring ──
 function setupUpgradeButton() {
   // Lazy-import to avoid circular deps — upgrade tree is static data
-  import('./upgrades.js?v=5.0').then(({ UPGRADE_TREE, purchaseUpgrade }) => {
+  import('./upgrades.js?v=6.0').then(({ UPGRADE_TREE, purchaseUpgrade }) => {
     upgradeBtn.addEventListener('click', () => {
       showUpgradePanel(app.state, UPGRADE_TREE, (catId, tier) => {
         if (purchaseUpgrade(catId, tier, app.state)) {

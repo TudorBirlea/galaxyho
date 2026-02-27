@@ -1,7 +1,7 @@
-import { CONFIG, VERSION } from './config.js?v=5.0';
-import { app } from './app.js?v=5.0';
-import { getMaxFuel, getUpgradeEffects, calculateJumpFuelCost } from './gameplay.js?v=5.0';
-import { getDockedPlanetId } from './ship.js?v=5.0';
+import { CONFIG, VERSION } from './config.js?v=6.0';
+import { app } from './app.js?v=6.0';
+import { getMaxFuel, getUpgradeEffects, calculateJumpFuelCost } from './gameplay.js?v=6.0';
+import { getDockedPlanetId } from './ship.js?v=6.0';
 
 const tooltipEl = document.getElementById('tooltip');
 const ttName = document.getElementById('tt-name');
