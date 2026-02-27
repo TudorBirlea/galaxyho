@@ -569,7 +569,9 @@ export function resolveChoice(eventInstance, choiceIndex, state) {
 
   // Success roll
   const effects = getUpgradeEffects(state);
-  const effectiveRate = Math.min(choice.successRate + effects.successRateBonus, 0.98);
+  const effectiveRate = choice.successRate >= 1.0
+    ? 1.0
+    : Math.min(choice.successRate + effects.successRateBonus, 0.98);
   const roll = rng();
   const success = roll < effectiveRate;
 

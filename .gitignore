@@ -2,3 +2,4 @@
 _extras/
 *.bak
 incoming/
+node_modules/
