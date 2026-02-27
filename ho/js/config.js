@@ -1,4 +1,4 @@
-export const VERSION = '5.2';
+export const VERSION = '5.3';
 
 export const CONFIG = {
   galaxy: {
@@ -144,16 +144,32 @@ export const CONFIG = {
     lowFuelThreshold: 25,
     eventChance: 0.70,
   },
+  statusRing: {
+    innerMult: 1.35,
+    outerMult: 1.55,
+    colors: {
+      scan:    [0.2, 0.8, 1.0],
+      mine:    [1.0, 0.75, 0.2],
+      explore: [0.3, 1.0, 0.4],
+    },
+    rotSpeed: 0.15,
+    opacity: 0.7,
+  },
   ship: {
     meshScale: 0.12,
-    flightSpeedMin: 0.8,
-    flightSpeedMax: 3.0,
-    arcHeightFactor: 0.35,
     thrusterParticleCount: 60,
     thrusterLifetime: 1.5,
     thrusterColor: [1.0, 0.7, 0.3],
     cameraFollowLerp: 0.05,
     cameraOffset: [0, 4, 8],
+    parkingOrbitBuffer: 4,
+    parkingOrbitSpeed: 0.18,
+    burnDuration: 0.35,
+    transferSpeedScale: 0.5,
+    approachSpeed: 1.5,
+    dockedOrbitMult: 2.5,
+    dockedOrbitTilt: 0.3,
+    dockedOrbitSpeed: 0.5,
   },
   remnants: {
     blackHoleCount: [1, 2],

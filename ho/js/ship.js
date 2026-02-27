@@ -6,11 +6,13 @@ import { easeInOutCubic } from './utils.js?v=5.0';
 import { getUpgradeEffects } from './gameplay.js?v=5.0';
 
 const _desiredCam = new THREE.Vector3();
-const _desiredTarget = new THREE.Vector3();
-const _tangent = new THREE.Vector3();
 const _lookAt = new THREE.Vector3();
-const _liveEnd = new THREE.Vector3();
 const _origin = new THREE.Vector3();
+const _pos = new THREE.Vector3();
+
+// ────────────────────────────────────────────────────────────
+// Ship mesh creation (unchanged from v5.2)
+// ────────────────────────────────────────────────────────────
 
 export function createShipMesh() {
   const group = new THREE.Group();
@@ -158,150 +160,372 @@ export function createShipMesh() {
   return group;
 }
 
+// ────────────────────────────────────────────────────────────
+// Orbital state machine
+// ────────────────────────────────────────────────────────────
+
+// States: 'parking' | 'burn_depart' | 'transfer' | 'burn_arrive' | 'approach' | 'docked'
+
+function createOrbitState(radius, angle, speed) {
+  return {
+    state: 'parking',
+    orbitRadius: radius,
+    orbitAngle: angle,
+    orbitSpeed: speed,
+    transfer: null,
+    dockedPlanetId: null,
+    dockedAngle: 0,
+  };
+}
+
 export function positionShipAtStar(starRadius) {
   if (!app.shipMesh) return;
-  // Place ship beyond the outermost planet orbit
+  // Determine parking orbit radius (beyond outermost planet)
   let maxOrbit = starRadius + 2;
   for (const p of app.systemPlanets) {
     if (p.data.orbitRadius > maxOrbit) maxOrbit = p.data.orbitRadius;
   }
-  const r = maxOrbit + 6;
+  const sc = CONFIG.ship;
+  const parkR = maxOrbit + sc.parkingOrbitBuffer;
   const angle = Math.random() * Math.PI * 2;
-  app.shipMesh.position.set(Math.cos(angle) * r, 0.5, Math.sin(angle) * r);
-  app.shipMesh.lookAt(0, 0.5, 0); // face star
+
+  // Position ship on parking orbit
+  app.shipMesh.position.set(Math.cos(angle) * parkR, 0, Math.sin(angle) * parkR);
+
+  // Face tangent (prograde direction, counterclockwise)
+  _lookAt.set(
+    Math.cos(angle + 0.1) * parkR,
+    0,
+    Math.sin(angle + 0.1) * parkR
+  );
+  app.shipMesh.lookAt(_lookAt);
+
+  // Initialize orbital state
+  app.shipOrbit = createOrbitState(parkR, angle, sc.parkingOrbitSpeed);
 }
 
 export function flyShipToPlanet(targetEntry, onArrive) {
   if (!app.shipMesh || !targetEntry) return;
-  if (app.shipFlightAnim) return; // already flying
+  const orb = app.shipOrbit;
+  if (!orb) return;
 
-  const startPos = app.shipMesh.position.clone();
-  // Get live planet position + hover offset for initial distance estimate
-  const hoverY = targetEntry.data.visualSize * 1.5;
-  const liveEnd = targetEntry.mesh.position.clone();
-  liveEnd.y += hoverY;
+  // Can't fly if already in transfer
+  const s = orb.state;
+  if (s === 'burn_depart' || s === 'transfer' || s === 'burn_arrive' || s === 'approach') return;
 
-  const dist = startPos.distanceTo(liveEnd);
+  const sc = CONFIG.ship;
   const effects = getUpgradeEffects(app.state);
-  const speedMult = effects.systemSpeedMult;
-  const duration = Math.max(CONFIG.ship.flightSpeedMin, Math.min(CONFIG.ship.flightSpeedMax, dist * 0.4)) / speedMult;
+  const speedMult = effects.systemSpeedMult || 1;
 
-  app.shipFlightAnim = {
-    startPos,
-    hoverY,
-    arcHeightBase: dist * CONFIG.ship.arcHeightFactor,
-    startTime: performance.now() / 1000,
+  // Departure radius: current orbit around star
+  let r1;
+  if (s === 'docked' && orb.dockedPlanetId !== null) {
+    // Undock: use the planet's stellar orbit radius as departure
+    const dockedEntry = app.systemPlanets.find(p => p.data.id === orb.dockedPlanetId);
+    r1 = dockedEntry ? dockedEntry.data.orbitRadius : orb.orbitRadius;
+    // Set ship angle to current position angle around star
+    orb.orbitAngle = Math.atan2(app.shipMesh.position.z, app.shipMesh.position.x);
+  } else {
+    r1 = orb.orbitRadius;
+  }
+
+  // Arrival radius: target planet's orbit
+  const r2 = targetEntry.data.orbitRadius;
+
+  // Compute transfer ellipse parameters
+  const semiMajor = (r1 + r2) / 2;
+  const ecc = Math.abs(r1 - r2) / (r1 + r2);
+
+  // Transfer duration from Kepler's 3rd law (half-orbit), scaled for gameplay
+  const rawDuration = Math.PI * Math.sqrt(semiMajor * semiMajor * semiMajor) * sc.transferSpeedScale;
+  const duration = Math.max(0.8, Math.min(4.0, rawDuration)) / speedMult;
+
+  orb.transfer = {
+    r1,
+    r2,
+    startAngle: orb.orbitAngle,
+    semiMajor,
+    eccentricity: ecc,
     duration,
+    startTime: performance.now() / 1000,
     targetEntry,
     onArrive,
+    goingInward: r2 < r1,
   };
+
+  // Transition to departure burn
+  orb.state = 'burn_depart';
+  orb.transfer.burnStart = performance.now() / 1000;
+  orb.dockedPlanetId = null;
 }
 
-function evalBezier(p0, p1, p2, t, out) {
-  const omt = 1 - t;
-  out.x = omt * omt * p0.x + 2 * omt * t * p1.x + t * t * p2.x;
-  out.y = omt * omt * p0.y + 2 * omt * t * p1.y + t * t * p2.y;
-  out.z = omt * omt * p0.z + 2 * omt * t * p1.z + t * t * p2.z;
-  return out;
+// Evaluate position on transfer ellipse (polar form, parametric angle)
+function evalTransfer(transfer, t) {
+  const { r1, r2, startAngle, semiMajor, eccentricity, goingInward } = transfer;
+
+  // Sweep half orbit (PI radians) in the direction of travel
+  const sweepDir = goingInward ? 1 : 1; // always counterclockwise
+  const theta = startAngle + t * Math.PI * sweepDir;
+
+  // Polar form of ellipse: r = a(1-e²) / (1 + e*cos(localAngle))
+  // localAngle goes from 0 (at r1) to PI (at r2)
+  const localAngle = t * Math.PI;
+  let r;
+  if (eccentricity < 0.001) {
+    // Nearly circular — just lerp the radius
+    r = r1 + (r2 - r1) * t;
+  } else {
+    const p = semiMajor * (1 - eccentricity * eccentricity);
+    // At localAngle=0 we want r=r1, at localAngle=PI we want r=r2
+    // For a Hohmann transfer: periapsis is the smaller radius
+    const cosA = goingInward ? Math.cos(localAngle) : -Math.cos(localAngle);
+    r = p / (1 + eccentricity * cosA);
+  }
+
+  return {
+    x: Math.cos(theta) * r,
+    z: Math.sin(theta) * r,
+    angle: theta,
+    radius: r,
+  };
 }
 
 export function updateShip(time, deltaTime) {
   if (!app.shipMesh) return;
+  const orb = app.shipOrbit;
+  if (!orb) return;
 
-  const anim = app.shipFlightAnim;
-  if (anim) {
-    const elapsed = time - anim.startTime;
-    const rawT = Math.min(elapsed / anim.duration, 1);
-    const t = easeInOutCubic(rawT);
+  const sc = CONFIG.ship;
+  const burnDur = sc.burnDuration;
 
-    // Recompute end position from LIVE planet mesh (planets orbit!)
-    _liveEnd.copy(anim.targetEntry.mesh.position);
-    _liveEnd.y += anim.hoverY;
+  switch (orb.state) {
 
-    // Recompute control point (midpoint raised by arc height)
-    const controlPos = _desiredTarget; // reuse temp vector
-    controlPos.lerpVectors(anim.startPos, _liveEnd, 0.5);
-    controlPos.y += anim.arcHeightBase;
-
-    // Current position on bezier
-    evalBezier(anim.startPos, controlPos, _liveEnd, t, app.shipMesh.position);
-
-    // Look along curve tangent
-    const tNext = Math.min(t + 0.02, 1);
-    evalBezier(anim.startPos, controlPos, _liveEnd, tNext, _tangent);
-    _lookAt.copy(_tangent);
-    if (_lookAt.distanceTo(app.shipMesh.position) > 0.001) {
-      app.shipMesh.lookAt(_lookAt);
-    }
-
-    // Camera follow during flight
-    const sc = CONFIG.ship;
-    _desiredCam.set(
-      app.shipMesh.position.x + sc.cameraOffset[0],
-      app.shipMesh.position.y + sc.cameraOffset[1],
-      app.shipMesh.position.z + sc.cameraOffset[2]
-    );
-    controls.target.lerp(app.shipMesh.position, sc.cameraFollowLerp);
-    camera.position.lerp(_desiredCam, sc.cameraFollowLerp * 0.8);
-
-    // Spawn thruster particles while flying
-    spawnThrusterParticle(app.shipMesh.position, deltaTime);
-
-    // Arrival
-    if (rawT >= 1) {
-      const cb = anim.onArrive;
-      const entry = anim.targetEntry;
-      app.shipFlightAnim = null;
-      // Dock: start orbiting the planet
-      app.shipMesh.userData.dockedPlanetId = entry.data.id;
-      app.shipMesh.userData.orbitAngle = Math.atan2(
-        app.shipMesh.position.z - entry.mesh.position.z,
-        app.shipMesh.position.x - entry.mesh.position.x
+    // ── PARKING: circular orbit around star ──
+    case 'parking': {
+      orb.orbitAngle += deltaTime * orb.orbitSpeed;
+      const r = orb.orbitRadius;
+      app.shipMesh.position.set(
+        Math.cos(orb.orbitAngle) * r,
+        0,
+        Math.sin(orb.orbitAngle) * r
       );
-      if (cb) cb(entry);
+      // Face tangent (prograde)
+      _lookAt.set(
+        Math.cos(orb.orbitAngle + 0.1) * r,
+        0,
+        Math.sin(orb.orbitAngle + 0.1) * r
+      );
+      app.shipMesh.lookAt(_lookAt);
+
+      // Camera: drift back to star center
+      controls.target.lerp(_origin, 0.05);
+      break;
     }
-  } else {
-    // If docked at a planet, orbit around it
-    const dockedId = app.shipMesh.userData.dockedPlanetId;
-    if (dockedId !== undefined && dockedId !== null) {
-      const entry = app.systemPlanets.find(p => p.data.id === dockedId);
+
+    // ── BURN_DEPART: brief thruster burst before transfer ──
+    case 'burn_depart': {
+      const elapsed = time - orb.transfer.burnStart;
+      const bt = Math.min(elapsed / burnDur, 1);
+
+      // Ship stays roughly at current position, slight drift outward/inward
+      const driftDir = orb.transfer.goingInward ? -1 : 1;
+      const r = orb.orbitRadius + driftDir * bt * 0.3;
+      orb.orbitAngle += deltaTime * orb.orbitSpeed;
+      app.shipMesh.position.set(
+        Math.cos(orb.orbitAngle) * r,
+        0,
+        Math.sin(orb.orbitAngle) * r
+      );
+      // Face slightly into transfer direction
+      const lookAngle = orb.orbitAngle + 0.1 + driftDir * bt * 0.05;
+      _lookAt.set(Math.cos(lookAngle) * r, 0, Math.sin(lookAngle) * r);
+      app.shipMesh.lookAt(_lookAt);
+
+      // Heavy thruster particles during burn
+      spawnThrusterParticle(app.shipMesh.position, deltaTime, 5);
+
+      // Camera follows ship
+      followCamera(sc);
+
+      if (bt >= 1) {
+        orb.state = 'transfer';
+        orb.transfer.startTime = time;
+        orb.transfer.startAngle = orb.orbitAngle;
+      }
+      break;
+    }
+
+    // ── TRANSFER: follow elliptical path ──
+    case 'transfer': {
+      const elapsed = time - orb.transfer.startTime;
+      const rawT = Math.min(elapsed / orb.transfer.duration, 1);
+      const t = easeInOutCubic(rawT);
+
+      const p = evalTransfer(orb.transfer, t);
+      app.shipMesh.position.set(p.x, 0, p.z);
+
+      // Look along tangent (sample slightly ahead)
+      const tNext = Math.min(t + 0.015, 1);
+      const pNext = evalTransfer(orb.transfer, tNext);
+      _lookAt.set(pNext.x, 0, pNext.z);
+      if (_lookAt.distanceToSquared(app.shipMesh.position) > 0.0001) {
+        app.shipMesh.lookAt(_lookAt);
+      }
+
+      // Normal thruster rate during coast
+      spawnThrusterParticle(app.shipMesh.position, deltaTime, 1);
+
+      // Camera follows
+      followCamera(sc);
+
+      // Track current angle for approach
+      orb.orbitAngle = p.angle;
+
+      if (rawT >= 1) {
+        orb.state = 'burn_arrive';
+        orb.transfer.burnStart = time;
+        orb.orbitRadius = orb.transfer.r2;
+      }
+      break;
+    }
+
+    // ── BURN_ARRIVE: deceleration burn at target orbit ──
+    case 'burn_arrive': {
+      const elapsed = time - orb.transfer.burnStart;
+      const bt = Math.min(elapsed / burnDur, 1);
+
+      // Orbit at target radius, slowing angular speed
+      const r = orb.orbitRadius;
+      orb.orbitAngle += deltaTime * orb.orbitSpeed * (1 - bt * 0.5);
+      app.shipMesh.position.set(
+        Math.cos(orb.orbitAngle) * r,
+        0,
+        Math.sin(orb.orbitAngle) * r
+      );
+      _lookAt.set(
+        Math.cos(orb.orbitAngle + 0.1) * r,
+        0,
+        Math.sin(orb.orbitAngle + 0.1) * r
+      );
+      app.shipMesh.lookAt(_lookAt);
+
+      // Heavy thruster particles
+      spawnThrusterParticle(app.shipMesh.position, deltaTime, 5);
+      followCamera(sc);
+
+      if (bt >= 1) {
+        orb.state = 'approach';
+        // Set orbit speed to match planet orbital speed for approach phase
+        orb.orbitSpeed = orb.transfer.targetEntry.data.orbitSpeed;
+      }
+      break;
+    }
+
+    // ── APPROACH: orbit at planet radius, converge on planet angle ──
+    case 'approach': {
+      const te = orb.transfer.targetEntry;
+      const planetAngle = te.data.orbitPhase + time * te.data.orbitSpeed;
+      const r = orb.orbitRadius;
+
+      // Advance ship slightly faster than planet to catch up
+      let angleDiff = normalizeAngle(planetAngle - orb.orbitAngle);
+      const catchupStep = sc.approachSpeed * deltaTime;
+      if (Math.abs(angleDiff) < catchupStep * 2) {
+        // Close enough — snap and dock
+        orb.orbitAngle = planetAngle;
+        orb.state = 'docked';
+        orb.dockedPlanetId = te.data.id;
+        orb.dockedAngle = 0;
+
+        // Fire arrival callback
+        if (orb.transfer.onArrive) {
+          orb.transfer.onArrive(te);
+        }
+      } else {
+        // Approach: add catchup to base orbital speed
+        orb.orbitAngle += (te.data.orbitSpeed + sc.approachSpeed * Math.sign(angleDiff)) * deltaTime;
+      }
+
+      app.shipMesh.position.set(
+        Math.cos(orb.orbitAngle) * r,
+        0,
+        Math.sin(orb.orbitAngle) * r
+      );
+      _lookAt.set(
+        Math.cos(orb.orbitAngle + 0.1) * r,
+        0,
+        Math.sin(orb.orbitAngle + 0.1) * r
+      );
+      app.shipMesh.lookAt(_lookAt);
+
+      // Light thruster puffs during approach
+      spawnThrusterParticle(app.shipMesh.position, deltaTime, 1);
+      followCamera(sc);
+      break;
+    }
+
+    // ── DOCKED: orbit close to planet ──
+    case 'docked': {
+      const entry = app.systemPlanets.find(p => p.data.id === orb.dockedPlanetId);
       if (entry) {
         const pos = entry.mesh.position;
-        const orbitR = entry.data.visualSize * 2.5;
-        const tilt = 0.3; // slight tilt for visual interest
-        app.shipMesh.userData.orbitAngle += deltaTime * 0.5;
-        const a = app.shipMesh.userData.orbitAngle;
+        const orbitR = entry.data.visualSize * sc.dockedOrbitMult;
+        const tilt = sc.dockedOrbitTilt;
+        orb.dockedAngle += deltaTime * sc.dockedOrbitSpeed;
+        const a = orb.dockedAngle;
         app.shipMesh.position.set(
           pos.x + Math.cos(a) * orbitR,
           pos.y + Math.sin(a) * orbitR * tilt,
           pos.z + Math.sin(a) * orbitR
         );
-        // Face along orbit direction (tangent)
+        // Face tangent
         _lookAt.set(
           pos.x + Math.cos(a + 0.1) * orbitR,
           pos.y + Math.sin(a + 0.1) * orbitR * tilt,
           pos.z + Math.sin(a + 0.1) * orbitR
         );
         app.shipMesh.lookAt(_lookAt);
+
+        // Keep stellar orbit angle in sync with planet (for undocking later)
+        orb.orbitAngle = entry.data.orbitPhase + time * entry.data.orbitSpeed;
+        orb.orbitRadius = entry.data.orbitRadius;
       }
+      // Camera: drift back to star center
+      controls.target.lerp(_origin, 0.05);
+      break;
     }
-    // Always keep orbit center on the star (origin)
-    controls.target.lerp(_origin, 0.05);
   }
 
-  // Update thruster particle ages
+  // Update thruster particle ages every frame
   updateThrusterParticles(deltaTime);
 }
 
-function spawnThrusterParticle(shipPos, dt) {
+// ── Helpers ──
+
+function normalizeAngle(a) {
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a < -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+
+function followCamera(sc) {
+  _desiredCam.set(
+    app.shipMesh.position.x + sc.cameraOffset[0],
+    app.shipMesh.position.y + sc.cameraOffset[1],
+    app.shipMesh.position.z + sc.cameraOffset[2]
+  );
+  controls.target.lerp(app.shipMesh.position, sc.cameraFollowLerp);
+  camera.position.lerp(_desiredCam, sc.cameraFollowLerp * 0.8);
+}
+
+function spawnThrusterParticle(shipPos, dt, intensityMult) {
   const tp = app.shipThrusterPoints;
   if (!tp) return;
   const ud = tp.userData;
   const posArr = tp.geometry.attributes.position.array;
   const ages = ud.ages;
 
-  // Spawn 2-3 particles per frame while flying
-  const count = Math.min(3, Math.ceil(dt * 60));
+  const count = Math.min(3 * intensityMult, Math.ceil(dt * 60 * intensityMult));
   for (let i = 0; i < count; i++) {
     const idx = ud.nextSlot;
     ud.nextSlot = (ud.nextSlot + 1) % ages.length;
@@ -332,13 +556,15 @@ function updateThrusterParticles(dt) {
 }
 
 export function isShipFlying() {
-  return app.shipFlightAnim !== null;
+  const orb = app.shipOrbit;
+  if (!orb) return false;
+  return orb.state !== 'parking' && orb.state !== 'docked';
 }
 
 export function clearShip() {
   app.shipMesh = null;
   app.shipThrusterPoints = null;
-  app.shipFlightAnim = null;
+  app.shipOrbit = null;
 }
 
 export function getShipPosition() {

@@ -31,7 +31,7 @@ export const app = {
   // ── v5 gameplay ──
   shipMesh: null,            // THREE.Group for 3D ship in system view
   shipThrusterPoints: null,  // Points for thruster trail
-  shipFlightAnim: null,      // { startPos, endPos, controlPos, startTime, duration, targetEntry, onArrive }
+  shipOrbit: null,           // { state, orbitRadius, orbitAngle, orbitSpeed, transfer, dockedPlanetId, ... }
   eventCardVisible: false,   // Event card modal open
   upgradesPanelVisible: false, // Upgrade panel open
   currentEvent: null,        // Active EventInstance

@@ -134,6 +134,17 @@ function performPlanetAction(planet, actionType) {
   updateHUD(app.galaxy, app.state);
   if (result.data) flashData();
   saveState(app.state);
+
+  // v5.3: Refresh status ring on the planet
+  const entry = app.systemPlanets.find(pe => pe.data.id === planet.id);
+  if (entry && entry.statusRing) {
+    const u = entry.statusRing.material.uniforms;
+    u.u_scanned.value = actions.scanned ? 1.0 : 0.0;
+    u.u_mined.value = actions.mined ? 1.0 : 0.0;
+    u.u_explored.value = actions.explored ? 1.0 : 0.0;
+    entry.statusRing.visible = true;
+  }
+
   return result;
 }
 

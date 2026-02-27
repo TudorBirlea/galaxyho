@@ -1038,3 +1038,53 @@ void main(){
   col=pow(col,vec3(0.92));
   gl_FragColor=vec4(col,1.);
 }`;
+
+// ── Status Ring: 3-arc indicator around planets ──
+export const STATUS_RING_VERT = `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+export const STATUS_RING_FRAG = `precision highp float;
+varying vec2 vUv;
+uniform float u_scanned;
+uniform float u_mined;
+uniform float u_explored;
+uniform float u_time;
+uniform vec3 u_colScan;
+uniform vec3 u_colMine;
+uniform vec3 u_colExplore;
+uniform float u_opacity;
+
+void main() {
+  // RingGeometry UVs: u goes 0..1 around the ring, v goes 0..1 radially
+  float angle = vUv.x * 6.2831853;
+
+  // 3 sectors of ~110 deg each with ~10 deg gaps
+  float gap = 0.12;
+  float sector = 6.2831853 / 3.0;
+  float localA = mod(angle, sector);
+  float edgeDist = min(localA, sector - localA);
+  float gapMask = smoothstep(0.0, gap, edgeDist);
+
+  // Which sector?
+  int sec = int(floor(angle / sector));
+  float active = 0.0;
+  vec3 col = vec3(0.0);
+  if (sec == 0) { active = u_scanned;  col = u_colScan; }
+  else if (sec == 1) { active = u_mined;    col = u_colMine; }
+  else               { active = u_explored; col = u_colExplore; }
+
+  if (active < 0.5) discard;
+
+  // Radial soft edges
+  float radial = smoothstep(0.0, 0.2, vUv.y) * smoothstep(1.0, 0.8, vUv.y);
+
+  // Subtle pulse per sector
+  float pulse = 0.85 + 0.15 * sin(u_time * 2.0 + float(sec) * 2.1);
+
+  float alpha = gapMask * radial * u_opacity * pulse;
+  gl_FragColor = vec4(col * 1.3, alpha);
+}`;

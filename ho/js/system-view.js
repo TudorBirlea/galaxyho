@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { CONFIG } from './config.js?v=5.0';
 import { STAR_VERT, STAR_FRAG, PLANET_VERT, PLANET_FRAG, RING_VERT, RING_FRAG,
          ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG,
-         COMET_TAIL_VERT, COMET_TAIL_FRAG } from './shaders.js?v=5.0';
+         COMET_TAIL_VERT, COMET_TAIL_FRAG,
+         STATUS_RING_VERT, STATUS_RING_FRAG } from './shaders.js?v=5.0';
 import { mulberry32 } from './utils.js?v=5.0';
 import { generatePlanets, generateAsteroidBelt, generateComets } from './data.js?v=5.0';
 import { systemGroup, camera, renderer } from './engine.js?v=5.0';
@@ -268,7 +269,36 @@ export function buildSystemView(star) {
       }
     }
 
-    app.systemPlanets.push({ mesh, ring, data: p, orbitLine: oLine, atmosMesh, moonMeshes });
+    // v5.3: Status ring — 3-arc indicator for scan/mine/explore
+    let statusRing = null;
+    const src = CONFIG.statusRing;
+    const srInner = p.visualSize * src.innerMult;
+    const srOuter = p.visualSize * src.outerMult;
+    const srGeo = new THREE.RingGeometry(srInner, srOuter, 64, 1);
+    const actions = app.getPlanetActions ? app.getPlanetActions(p) : { scanned: false, mined: false, explored: false };
+    const anyDone = actions.scanned || actions.mined || actions.explored;
+    statusRing = new THREE.Mesh(srGeo, new THREE.ShaderMaterial({
+      vertexShader: STATUS_RING_VERT,
+      fragmentShader: STATUS_RING_FRAG,
+      uniforms: {
+        u_scanned:   { value: actions.scanned ? 1.0 : 0.0 },
+        u_mined:     { value: actions.mined ? 1.0 : 0.0 },
+        u_explored:  { value: actions.explored ? 1.0 : 0.0 },
+        u_time:      { value: 0 },
+        u_colScan:   { value: new THREE.Vector3(...src.colors.scan) },
+        u_colMine:   { value: new THREE.Vector3(...src.colors.mine) },
+        u_colExplore:{ value: new THREE.Vector3(...src.colors.explore) },
+        u_opacity:   { value: src.opacity },
+      },
+      transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    }));
+    statusRing.rotation.x = -Math.PI / 2;
+    statusRing.renderOrder = 3;
+    statusRing.visible = anyDone;
+    systemGroup.add(statusRing);
+
+    app.systemPlanets.push({ mesh, ring, data: p, orbitLine: oLine, atmosMesh, moonMeshes, statusRing });
   }
 
   // v5: Event indicators (Event Scanner upgrade)
@@ -486,11 +516,34 @@ export function buildSystemView(star) {
     for (let i = 0; i < beltCfg.largeRockCount; i++) {
       const rockRng = mulberry32(beltData.beltSeed + 100 + i * 37);
       const sz = beltCfg.largeRockSizeMin + rockRng() * (beltCfg.largeRockSizeMax - beltCfg.largeRockSizeMin);
-      const geo = new THREE.IcosahedronGeometry(sz, 1);
+      const geo = new THREE.IcosahedronGeometry(sz, 2);
       const posAttr = geo.attributes.position;
+
+      // Elongation for potato/asteroid shapes
+      const elongX = 0.75 + rockRng() * 0.5;
+      const elongY = 0.75 + rockRng() * 0.5;
+      const elongZ = 0.75 + rockRng() * 0.5;
+
+      // Random phases for multi-frequency displacement
+      const p1 = rockRng() * 6.28, p2 = rockRng() * 6.28;
+      const p3 = rockRng() * 6.28, p4 = rockRng() * 6.28;
+      const p5 = rockRng() * 6.28, p6 = rockRng() * 6.28;
+
       for (let v = 0; v < posAttr.count; v++) {
-        const scale = 1.0 + (rockRng() - 0.5) * 0.4;
-        posAttr.setXYZ(v, posAttr.getX(v) * scale, posAttr.getY(v) * scale, posAttr.getZ(v) * scale);
+        let x = posAttr.getX(v) * elongX;
+        let y = posAttr.getY(v) * elongY;
+        let z = posAttr.getZ(v) * elongZ;
+        const len = Math.sqrt(x * x + y * y + z * z) || 1;
+        const dx = x / len, dy = y / len, dz = z / len;
+        const theta = Math.atan2(dy, dx);
+        const phi = Math.acos(Math.min(1, Math.max(-1, dz)));
+        // Spatially coherent bumps via spherical harmonics
+        let disp = 0;
+        disp += 0.12 * Math.sin(theta * 3 + p1) * Math.sin(phi * 2 + p2);
+        disp += 0.07 * Math.sin(theta * 5 + p3) * Math.sin(phi * 4 + p4);
+        disp += 0.04 * Math.sin(theta * 8 + p5) * Math.sin(phi * 7 + p6);
+        const r = len * (1.0 + disp);
+        posAttr.setXYZ(v, dx * r, dy * r, dz * r);
       }
       geo.computeVertexNormals();
       const colors = [0x6b5e50, 0x585858, 0x4a3e34, 0x7a7268, 0x5e4a40];
@@ -757,6 +810,12 @@ export function updateSystemView(time) {
         const mz = pz + Math.sin(ma) * moon.data.orbitRadius;
         moon.mesh.position.set(mx, 0, mz);
       }
+    }
+
+    // v5.3: Update status ring position + rotation
+    if (p.statusRing) {
+      p.statusRing.position.set(px, 0.01, pz);
+      p.statusRing.material.uniforms.u_time.value = time;
     }
   }
 
