@@ -1,4 +1,4 @@
-export const VERSION = '6.2';
+export const VERSION = '6.3';
 
 export const CONFIG = {
   galaxy: {
@@ -165,18 +165,18 @@ export const CONFIG = {
     parkingOrbitBuffer: 4,
     parkingOrbitSpeed: 0.18,
     burnDuration: 0.35,
-    transferSpeedScale: 0.5,
     approachSpeed: 1.5,
     dockedOrbitMult: 2.5,
     dockedOrbitTilt: 0.3,
     dockedOrbitSpeed: 0.5,
     gravity: {
       planetMassFactor: 0.15,
-      guidanceStrength: 0.3,
+      guidanceStrength: 0.05,
       substepDt: 0.004,
-      maxDurationMult: 1.5,
+      maxDurationMult: 2.0,
       starSoftening: 0.5,
       planetSofteningMult: 0.5,
+      targetRealDuration: 5.0,
     },
   },
   remnants: {

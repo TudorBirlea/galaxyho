@@ -249,30 +249,39 @@ function computeGravAccel(px, pz, GM_star, time) {
   return { ax, az };
 }
 
-function computeGuidance(px, pz, transfer, simTime) {
+// Gentle orbital trim — nudges the ship's velocity toward the correct
+// orbital energy, not toward the target position. This preserves the
+// natural elliptical arc while ensuring the ship reaches the right orbit.
+function computeGuidance(px, pz, vx, vz, transfer, simTime) {
   const gc = CONFIG.ship.gravity;
-  const te = transfer.targetEntry;
+  const GM = transfer.GM_star;
 
+  // Current orbital energy: E = v²/2 - GM/r
+  const r = Math.sqrt(px * px + pz * pz);
+  const v2 = vx * vx + vz * vz;
+  const currentEnergy = v2 / 2 - GM / r;
+
+  // Target energy for a Hohmann transfer reaching r2: E = -GM / (r1 + r2)
+  const targetEnergy = -GM / (transfer.r1 + transfer.r2);
+
+  // Energy error — positive means too much energy (going too fast)
+  const energyError = currentEnergy - targetEnergy;
+
+  // Apply a small velocity-aligned correction to trim the energy
+  // Reduce speed if too much energy, increase if too little
+  const speed = Math.sqrt(v2);
+  if (speed < 0.01) return { ax: 0, az: 0 };
+
+  // Progress-based ramp: no correction at start, full at end
   const elapsed = simTime - transfer.startTime;
   const progress = Math.min(elapsed / transfer.duration, 1);
-  const timeToArrival = Math.max(transfer.duration - elapsed, 0.5);
-  const arrivalTime = simTime + timeToArrival;
-  const targetAngle = te.data.orbitPhase + arrivalTime * te.data.orbitSpeed;
-  const targetX = Math.cos(targetAngle) * te.data.orbitRadius;
-  const targetZ = Math.sin(targetAngle) * te.data.orbitRadius;
+  const ramp = progress * progress * progress; // cubic ramp — very gentle early
 
-  const dx = targetX - px;
-  const dz = targetZ - pz;
-  const dist = Math.sqrt(dx * dx + dz * dz);
-  if (dist < 0.1) return { ax: 0, az: 0 };
-
-  // Ramps up quadratically with progress
-  const ramp = progress * progress;
-  const strength = gc.guidanceStrength * ramp;
+  const correction = -energyError * gc.guidanceStrength * ramp;
 
   return {
-    ax: (dx / dist) * strength,
-    az: (dz / dist) * strength,
+    ax: (vx / speed) * correction,
+    az: (vz / speed) * correction,
   };
 }
 
@@ -302,10 +311,18 @@ export function flyShipToPlanet(targetEntry, onArrive) {
   // Arrival radius: target planet's orbit
   const r2 = targetEntry.data.orbitRadius;
 
-  // Duration estimate from Kepler (for timeout safety and guidance pacing)
+  // Derive GM and compute real Hohmann half-orbit duration
+  const GM = deriveGMStar();
   const semiMajor = (r1 + r2) / 2;
-  const rawDuration = Math.PI * Math.sqrt(semiMajor * semiMajor * semiMajor) * sc.transferSpeedScale;
-  const duration = Math.max(0.8, Math.min(4.0, rawDuration)) / speedMult;
+  const hohmannDuration = Math.PI * Math.sqrt(semiMajor * semiMajor * semiMajor / GM);
+
+  // Time-warp: scale simulation time so the transfer takes ~targetRealDuration seconds
+  const gc = CONFIG.ship.gravity;
+  const targetReal = gc.targetRealDuration / speedMult;
+  const timeWarp = Math.max(1, hohmannDuration / targetReal);
+
+  // Real-time duration the player experiences
+  const duration = hohmannDuration / timeWarp;
 
   orb.transfer = {
     r1,
@@ -314,12 +331,13 @@ export function flyShipToPlanet(targetEntry, onArrive) {
     onArrive,
     goingInward: r2 < r1,
     duration,
+    timeWarp,
     startTime: performance.now() / 1000,
     // Gravity sim state (seeded at BURN_DEPART→TRANSFER transition)
     posX: 0, posZ: 0,
     velX: 0, velZ: 0,
-    GM_star: 0,
-    maxDuration: duration * CONFIG.ship.gravity.maxDurationMult,
+    GM_star: GM,
+    maxDuration: duration * gc.maxDurationMult,
   };
 
   // Transition to departure burn
@@ -385,8 +403,8 @@ export function updateShip(time, deltaTime) {
       controls.target.lerp(_origin, 0.05);
 
       if (bt >= 1) {
-        // Seed gravity simulation
-        const GM = deriveGMStar();
+        // Seed gravity simulation with Hohmann departure velocity
+        const GM = orb.transfer.GM_star;
         const r1 = orb.transfer.r1;
         const r2 = orb.transfer.r2;
         const a = (r1 + r2) / 2;
@@ -400,31 +418,32 @@ export function updateShip(time, deltaTime) {
         const tangentZ = Math.cos(angle);
 
         orb.transfer.startTime = time;
+        orb.transfer.simTime = time;
         orb.transfer.posX = shipX;
         orb.transfer.posZ = shipZ;
         orb.transfer.velX = tangentX * vTransfer;
         orb.transfer.velZ = tangentZ * vTransfer;
-        orb.transfer.GM_star = GM;
         orb.state = 'transfer';
       }
       break;
     }
 
-    // ── TRANSFER: gravity simulation (Velocity Verlet) ──
+    // ── TRANSFER: gravity simulation (Velocity Verlet, time-warped) ──
     case 'transfer': {
       const tr = orb.transfer;
       const gc = sc.gravity;
-      const dt_sim = Math.min(deltaTime, 0.05);
+      // Time-warp: simulate more physics time per real second
+      const dt_sim = Math.min(deltaTime * tr.timeWarp, 0.1);
       const numSteps = Math.ceil(dt_sim / gc.substepDt);
       const h = dt_sim / numSteps;
 
       let { posX, posZ, velX, velZ } = tr;
-      let simTime = time - dt_sim;
+      let simTime = tr.simTime || tr.startTime;
 
       for (let step = 0; step < numSteps; step++) {
         // Acceleration at current position
         const a1 = computeGravAccel(posX, posZ, tr.GM_star, simTime);
-        const g1 = computeGuidance(posX, posZ, tr, simTime);
+        const g1 = computeGuidance(posX, posZ, velX, velZ, tr, simTime);
         const ax1 = a1.ax + g1.ax;
         const az1 = a1.az + g1.az;
 
@@ -434,7 +453,7 @@ export function updateShip(time, deltaTime) {
 
         // Acceleration at new position
         const a2 = computeGravAccel(posX, posZ, tr.GM_star, simTime + h);
-        const g2 = computeGuidance(posX, posZ, tr, simTime + h);
+        const g2 = computeGuidance(posX, posZ, velX, velZ, tr, simTime + h);
 
         // Update velocity
         velX += 0.5 * (ax1 + a2.ax + g2.ax) * h;
@@ -442,6 +461,7 @@ export function updateShip(time, deltaTime) {
 
         simTime += h;
       }
+      tr.simTime = simTime;
 
       tr.posX = posX;
       tr.posZ = posZ;
@@ -479,9 +499,9 @@ export function updateShip(time, deltaTime) {
 
       // Arrival detection
       const r = Math.sqrt(posX * posX + posZ * posZ);
-      const elapsed = time - tr.startTime;
+      const realElapsed = time - tr.startTime;
       const arrivedAtOrbit = tr.goingInward ? (r <= tr.r2) : (r >= tr.r2);
-      const timedOut = elapsed > tr.maxDuration;
+      const timedOut = realElapsed > tr.maxDuration;
 
       if (arrivedAtOrbit || timedOut) {
         orb.state = 'burn_arrive';
