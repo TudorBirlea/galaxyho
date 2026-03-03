@@ -1,4 +1,4 @@
-export const VERSION = '6.6';
+export const VERSION = '6.7';
 
 export const CONFIG = {
   galaxy: {
@@ -156,7 +156,7 @@ export const CONFIG = {
     opacity: 0.7,
   },
   ship: {
-    meshScale: 0.005,
+    meshScale: 0.00125,
     thrusterParticleCount: 60,
     thrusterLifetime: 1.5,
     thrusterColor: [1.0, 0.7, 0.3],
