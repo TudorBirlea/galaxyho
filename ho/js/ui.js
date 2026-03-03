@@ -1,7 +1,8 @@
+import * as THREE from 'three';
 import { CONFIG, VERSION } from './config.js?v=6.0';
 import { app } from './app.js?v=6.0';
 import { getMaxFuel, getUpgradeEffects, calculateJumpFuelCost } from './gameplay.js?v=6.0';
-import { getDockedPlanetId, swapShipModel } from './ship.js?v=6.0';
+import { getDockedPlanetId, swapShipModel, shipModelCache, shipModelsReady } from './ship.js?v=6.0';
 import { saveState } from './state.js?v=6.0';
 
 const tooltipEl = document.getElementById('tooltip');
@@ -494,13 +495,68 @@ const shipPickerClose = document.getElementById('ship-picker-close');
 const spChangeBtn = document.getElementById('sp-change-btn');
 const spLabel = document.getElementById('sp-label');
 
+// Preview renderer (shared, offscreen)
+const previewSize = 160;
+const previewRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+previewRenderer.setSize(previewSize, previewSize);
+previewRenderer.setClearColor(0x000000, 0);
+const previewScene = new THREE.Scene();
+const previewCamera = new THREE.PerspectiveCamera(40, 1, 0.01, 10);
+previewCamera.position.set(0.8, 0.5, 1.2);
+previewCamera.lookAt(0, 0, 0);
+const previewAmbient = new THREE.AmbientLight(0xffffff, 2.0);
+const previewDir = new THREE.DirectionalLight(0xccddff, 3.0);
+previewDir.position.set(1, 2, 2);
+previewScene.add(previewAmbient, previewDir);
+
+const previewCache = new Map(); // shipId → dataURL
+
+function renderShipPreview(shipId) {
+  if (previewCache.has(shipId)) return previewCache.get(shipId);
+  const model = shipModelCache.get(shipId);
+  if (!model) return null;
+
+  const clone = model.clone();
+  // Convert to lit materials for preview (MeshBasicMaterial ignores lights)
+  clone.traverse((child) => {
+    if (child.isMesh) {
+      const convertToLit = (mat) => {
+        const opts = { color: mat.color ? mat.color.clone() : new THREE.Color(0x8ab4c8) };
+        if (mat.map) opts.map = mat.map;
+        if (mat.vertexColors) opts.vertexColors = true;
+        if (mat.transparent) { opts.transparent = true; opts.opacity = mat.opacity; }
+        return new THREE.MeshStandardMaterial(opts);
+      };
+      if (Array.isArray(child.material)) {
+        child.material = child.material.map(convertToLit);
+      } else {
+        child.material = convertToLit(child.material);
+      }
+    }
+  });
+
+  previewScene.add(clone);
+  previewRenderer.render(previewScene, previewCamera);
+  previewScene.remove(clone);
+
+  const dataURL = previewRenderer.domElement.toDataURL();
+  previewCache.set(shipId, dataURL);
+  return dataURL;
+}
+
 function renderShipPicker() {
   const selected = (app.state && app.state.selectedShip) || 'spaceship';
   shipPickerGrid.innerHTML = '';
   for (const ship of CONFIG.ships) {
     const card = document.createElement('div');
     card.className = 'sp-card' + (ship.id === selected ? ' selected' : '');
-    card.innerHTML = `<div class="sp-card-icon">▲</div><div class="sp-card-name">${ship.name}</div><div class="sp-card-status">${ship.id === selected ? 'Active' : 'Select'}</div>`;
+
+    const preview = renderShipPreview(ship.id);
+    const imgHtml = preview
+      ? `<img class="sp-card-preview" src="${preview}" width="${previewSize}" height="${previewSize}">`
+      : `<div class="sp-card-icon">▲</div>`;
+
+    card.innerHTML = `${imgHtml}<div class="sp-card-name">${ship.name}</div><div class="sp-card-status">${ship.id === selected ? 'Active' : 'Select'}</div>`;
     card.addEventListener('click', () => {
       if (!app.state) return;
       app.state.selectedShip = ship.id;
@@ -521,8 +577,17 @@ function updateShipLabel() {
 }
 
 export function showShipPicker() {
-  renderShipPicker();
   shipPicker.classList.add('visible');
+  // Ensure models are loaded before rendering previews
+  if (shipModelCache.size >= CONFIG.ships.length) {
+    renderShipPicker();
+  } else {
+    renderShipPicker(); // show cards with fallback icons first
+    shipModelsReady.then(() => {
+      previewCache.clear();
+      renderShipPicker();
+    });
+  }
 }
 
 export function hideShipPicker() {

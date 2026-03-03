@@ -12,7 +12,7 @@ const _origin = new THREE.Vector3();
 // Preload all GLB ship models (cached for reuse across system views)
 // ────────────────────────────────────────────────────────────
 
-const shipModelCache = new Map(); // id → pivot Group
+export const shipModelCache = new Map(); // id → pivot Group
 const gltfLoader = new GLTFLoader();
 
 function loadShipModel(shipDef) {
@@ -31,11 +31,24 @@ function loadShipModel(shipDef) {
 
       model.traverse((child) => {
         if (child.isMesh) {
-          const oldMat = child.material;
-          child.material = new THREE.MeshBasicMaterial({
-            color: oldMat.color ? oldMat.color.clone() : new THREE.Color(0x8ab4c8),
-          });
-          oldMat.dispose();
+          const convert = (mat) => {
+            const opts = {};
+            if (mat.map) opts.map = mat.map;
+            else if (mat.color) opts.color = mat.color.clone();
+            else opts.color = new THREE.Color(0x8ab4c8);
+            if (mat.vertexColors) opts.vertexColors = true;
+            if (mat.transparent) { opts.transparent = true; opts.opacity = mat.opacity; }
+            if (mat.alphaMap) opts.alphaMap = mat.alphaMap;
+            const basic = new THREE.MeshBasicMaterial(opts);
+            if (mat.side !== undefined) basic.side = mat.side;
+            mat.dispose();
+            return basic;
+          };
+          if (Array.isArray(child.material)) {
+            child.material = child.material.map(convert);
+          } else {
+            child.material = convert(child.material);
+          }
         }
       });
 
@@ -45,7 +58,7 @@ function loadShipModel(shipDef) {
   });
 }
 
-const shipModelsReady = Promise.all(CONFIG.ships.map(loadShipModel));
+export const shipModelsReady = Promise.all(CONFIG.ships.map(loadShipModel));
 
 // ────────────────────────────────────────────────────────────
 // Ship mesh creation (GLB model + engine glow sprites)
