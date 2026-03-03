@@ -641,14 +641,14 @@ void main(){
   float total=core+spikes+halo+halo2;
 
   float lum=dot(vCol,vec3(0.2126,0.7152,0.0722));
-  vec3 saturated=mix(vec3(lum),vCol,1.6);
+  vec3 saturated=mix(vec3(lum),vCol,0.85);
   saturated=max(saturated,vec3(0.0));
 
-  float lumComp=1.0+0.5*(1.0-clamp(lum*2.5,0.0,1.0));
+  float lumComp=1.0+0.3*(1.0-clamp(lum*2.5,0.0,1.0));
 
   vec3 col=mix(saturated,vec3(1.0),smoothstep(0.0,0.9,core));
 
-  vec3 haloCol=saturated*(halo+halo2)*1.5*lumComp;
+  vec3 haloCol=saturated*(halo+halo2)*1.1*lumComp;
   vec3 coreCol=col*(core+spikes);
   col=coreCol+haloCol;
   col*=vBright;

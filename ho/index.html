@@ -11,6 +11,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
   font-family:'SF Mono','Fira Code','Consolas',monospace}
 canvas{display:block}
 
+/* ── Fullscreen idle auto-hide ── */
+#hud,#ship-panel,#minimap-wrap,#bottom-bar,#back-btn,#system-panel,#fullscreen-btn,#tune-panel{
+  transition:opacity 0.5s}
+body.ui-hidden #hud,body.ui-hidden #ship-panel,body.ui-hidden #minimap-wrap,
+body.ui-hidden #bottom-bar,body.ui-hidden #back-btn,body.ui-hidden #system-panel,
+body.ui-hidden #fullscreen-btn,body.ui-hidden #tune-panel{
+  opacity:0!important;pointer-events:none!important}
+
 /* ── HUD ── */
 #hud{position:fixed;top:0;left:0;right:0;padding:18px 24px;display:flex;justify-content:space-between;align-items:flex-start;
   color:rgba(255,255,255,0.25);font-size:11px;letter-spacing:2px;text-transform:uppercase;pointer-events:none;z-index:20}
@@ -477,6 +485,21 @@ canvas{display:block}
 }}
 </script>
 
+<script>
+(function(){
+  var timer=null, idle=3000;
+  function show(){document.body.classList.remove('ui-hidden');clearTimeout(timer);
+    if(document.fullscreenElement) timer=setTimeout(hide,idle);}
+  function hide(){if(document.fullscreenElement) document.body.classList.add('ui-hidden');}
+  document.addEventListener('mousemove',show);
+  document.addEventListener('touchstart',show);
+  document.addEventListener('click',show);
+  document.addEventListener('fullscreenchange',function(){
+    if(document.fullscreenElement){timer=setTimeout(hide,idle);}
+    else{show();}
+  });
+})();
+</script>
 <script type="module" src="js/main.js?v=6.0"></script>
 </body>
 </html>
