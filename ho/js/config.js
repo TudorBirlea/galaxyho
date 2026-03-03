@@ -1,4 +1,4 @@
-export const VERSION = '6.11';
+export const VERSION = '6.12';
 
 export const CONFIG = {
   ships: [
@@ -166,7 +166,7 @@ export const CONFIG = {
     opacity: 0.7,
   },
   ship: {
-    meshScale: 3.2,
+    meshScale: 0.8,
     thrusterParticleCount: 60,
     thrusterLifetime: 1.5,
     thrusterColor: [1.0, 0.7, 0.3],
