@@ -70,9 +70,10 @@ export function createShipMesh() {
 
   // ── Load GLB model into group ──
   const selectedId = (app.state && app.state.selectedShip) || 'spaceship';
+  const meshScale = (app.state && app.state.shipScale !== undefined) ? app.state.shipScale : sc.meshScale;
   const addModel = (source) => {
     const clone = source.clone();
-    clone.scale.multiplyScalar(sc.meshScale); // multiply on top of unit normalization
+    clone.scale.multiplyScalar(meshScale); // multiply on top of unit normalization
     group.add(clone);
   };
 
@@ -87,7 +88,7 @@ export function createShipMesh() {
   }
 
   // ── Engine glow sprites ──
-  const half = sc.meshScale * 0.5;
+  const half = meshScale * 0.5;
   const glowCanvas = document.createElement('canvas');
   glowCanvas.width = 64; glowCanvas.height = 64;
   const gCtx = glowCanvas.getContext('2d');
@@ -591,17 +592,52 @@ export function swapShipModel() {
   const cached = shipModelCache.get(selectedId) || shipModelCache.get('spaceship');
   if (!cached) return;
 
-  // Remove old model children (keep sprites + don't touch thruster points)
+  const meshScale = (app.state && app.state.shipScale !== undefined) ? app.state.shipScale : sc.meshScale;
+
+  // Remove old model children and sprites (rebuild both for scale)
   const toRemove = [];
   for (const child of app.shipMesh.children) {
     if (!child.isSprite) toRemove.push(child);
   }
   toRemove.forEach(c => app.shipMesh.remove(c));
 
+  // Also remove old glow sprites and rebuild
+  const oldSprites = [];
+  for (const child of app.shipMesh.children) {
+    if (child.isSprite) oldSprites.push(child);
+  }
+  oldSprites.forEach(c => app.shipMesh.remove(c));
+
   // Add new model
   const clone = cached.clone();
-  clone.scale.multiplyScalar(sc.meshScale); // multiply on top of unit normalization
+  clone.scale.multiplyScalar(meshScale);
   app.shipMesh.add(clone);
+
+  // Rebuild engine glow sprites at correct scale
+  const half = meshScale * 0.5;
+  const glowCanvas = document.createElement('canvas');
+  glowCanvas.width = 64; glowCanvas.height = 64;
+  const gCtx = glowCanvas.getContext('2d');
+  const grad = gCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(100,210,255,1)');
+  grad.addColorStop(0.12, 'rgba(80,190,255,0.8)');
+  grad.addColorStop(0.35, 'rgba(60,150,240,0.25)');
+  grad.addColorStop(1, 'rgba(40,100,200,0)');
+  gCtx.fillStyle = grad;
+  gCtx.fillRect(0, 0, 64, 64);
+  const glowTex = new THREE.CanvasTexture(glowCanvas);
+  const makeGlow = (x, y, z, size) => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    s.scale.setScalar(size);
+    s.position.set(x, y, z);
+    return s;
+  };
+  app.shipMesh.add(makeGlow(0, 0, -half * 0.9, half * 0.35));
+  app.shipMesh.add(makeGlow(half * 0.25, 0, -half * 0.8, half * 0.22));
+  app.shipMesh.add(makeGlow(-half * 0.25, 0, -half * 0.8, half * 0.22));
 }
 
 export function clearShip() {

@@ -22,6 +22,7 @@ export function createState(seed) {
     totalScans: 0,
     totalJumps: 0,
     selectedShip: 'spaceship',
+    shipScale: CONFIG.ship.meshScale,
   };
 }
 
@@ -58,6 +59,8 @@ export function loadState() {
     }
     // v6.8 migration: selectedShip
     if (!s.selectedShip) s.selectedShip = 'spaceship';
+    // v6.13 migration: shipScale
+    if (s.shipScale === undefined) s.shipScale = CONFIG.ship.meshScale;
     // v5.2 migration: planetActions
     if (!s.planetActions) {
       s.planetActions = {};

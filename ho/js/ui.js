@@ -567,6 +567,27 @@ function renderShipPicker() {
     });
     shipPickerGrid.appendChild(card);
   }
+
+  // Ship size slider
+  const sliderWrap = document.getElementById('ship-size-slider-wrap');
+  if (sliderWrap) {
+    const curScale = (app.state && app.state.shipScale !== undefined) ? app.state.shipScale : CONFIG.ship.meshScale;
+    sliderWrap.innerHTML = `
+      <label class="sp-slider-label">Ship Size</label>
+      <input type="range" id="ship-size-slider" min="0.1" max="5" step="0.1" value="${curScale}">
+      <span class="sp-slider-val" id="ship-size-val">${curScale.toFixed(1)}</span>`;
+    const slider = document.getElementById('ship-size-slider');
+    const valEl = document.getElementById('ship-size-val');
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      valEl.textContent = v.toFixed(1);
+      if (app.state) {
+        app.state.shipScale = v;
+        saveState(app.state);
+        swapShipModel();
+      }
+    });
+  }
 }
 
 function updateShipLabel() {
@@ -600,5 +621,3 @@ if (spChangeBtn) {
 if (shipPickerClose) {
   shipPickerClose.addEventListener('click', () => hideShipPicker());
 }
-
-export { updateShipLabel };

@@ -284,6 +284,11 @@ canvas{display:block}
 #sp-change-btn{background:none;border:none;color:rgba(138,180,200,0.4);font-size:9px;cursor:pointer;
   letter-spacing:1.5px;text-transform:uppercase;font-family:inherit;padding:4px 0;transition:color 0.2s;margin-top:4px}
 #sp-change-btn:hover{color:rgba(138,180,200,0.7)}
+#ship-size-slider-wrap{width:100%;max-width:720px;padding:8px 28px 24px;display:flex;align-items:center;gap:12px}
+.sp-slider-label{font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:1.5px;text-transform:uppercase;flex-shrink:0}
+#ship-size-slider{flex:1;accent-color:rgba(100,200,150,0.5);height:3px}
+.sp-slider-val{font-size:11px;color:rgba(255,200,150,0.6);min-width:30px;text-align:right}
+#fullscreen-btn:hover{color:rgba(255,255,255,0.5);border-color:rgba(255,255,255,0.15)}
 </style>
 </head>
 <body>
@@ -296,6 +301,12 @@ canvas{display:block}
   <div style="text-align:right">
     <span id="hud-progress" style="font-size:11px">0/100 explored</span>
     <div id="hud-version" style="font-size:9px;color:rgba(255,255,255,0.14);margin-top:4px;letter-spacing:1px"></div>
+    <button id="fullscreen-btn" style="margin-top:6px;background:none;border:1px solid rgba(255,255,255,0.08);border-radius:5px;
+      color:rgba(255,255,255,0.25);font-size:9px;cursor:pointer;padding:4px 10px;letter-spacing:1.5px;text-transform:uppercase;
+      font-family:inherit;transition:all 0.2s;pointer-events:auto" onclick="
+        if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{})}
+        else{document.exitFullscreen()}
+      ">Fullscreen</button>
   </div>
 </div>
 
@@ -404,6 +415,7 @@ canvas{display:block}
     <button id="ship-picker-close">&times;</button>
   </div>
   <div id="ship-picker-grid"></div>
+  <div id="ship-size-slider-wrap"></div>
 </div>
 
 <div id="system-panel">
