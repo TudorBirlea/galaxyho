@@ -72,7 +72,7 @@ export function createShipMesh() {
   const selectedId = (app.state && app.state.selectedShip) || 'spaceship';
   const addModel = (source) => {
     const clone = source.clone();
-    clone.scale.setScalar(sc.meshScale);
+    clone.scale.multiplyScalar(sc.meshScale); // multiply on top of unit normalization
     group.add(clone);
   };
 
@@ -600,7 +600,7 @@ export function swapShipModel() {
 
   // Add new model
   const clone = cached.clone();
-  clone.scale.setScalar(sc.meshScale);
+  clone.scale.multiplyScalar(sc.meshScale); // multiply on top of unit normalization
   app.shipMesh.add(clone);
 }
 
