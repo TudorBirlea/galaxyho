@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CONFIG } from './config.js?v=6.0';
 import { app } from './app.js?v=6.0';
 import { controls, systemGroup } from './engine.js?v=6.0';
@@ -8,77 +9,67 @@ const _lookAt = new THREE.Vector3();
 const _origin = new THREE.Vector3();
 
 // ────────────────────────────────────────────────────────────
-// Ship mesh creation (unchanged from v5.2)
+// Preload GLB ship model (cached for reuse across system views)
+// ────────────────────────────────────────────────────────────
+
+let cachedShipModel = null;
+const gltfLoader = new GLTFLoader();
+const shipModelReady = new Promise((resolve) => {
+  gltfLoader.load('models/spaceship.glb', (gltf) => {
+    const model = gltf.scene;
+
+    // Compute bounding box to center and scale
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+
+    // Wrap in pivot: center + normalize to unit size
+    const pivot = new THREE.Group();
+    model.position.set(-center.x, -center.y, -center.z);
+    pivot.add(model);
+    const unitScale = 1.0 / maxDim;
+    pivot.scale.setScalar(unitScale);
+
+    // Convert to unlit MeshBasicMaterial (game has no scene lights)
+    model.traverse((child) => {
+      if (child.isMesh) {
+        const oldMat = child.material;
+        child.material = new THREE.MeshBasicMaterial({
+          color: oldMat.color ? oldMat.color.clone() : new THREE.Color(0x8ab4c8),
+        });
+        oldMat.dispose();
+      }
+    });
+
+    cachedShipModel = pivot;
+    resolve(pivot);
+  });
+});
+
+// ────────────────────────────────────────────────────────────
+// Ship mesh creation (GLB model + engine glow sprites)
 // ────────────────────────────────────────────────────────────
 
 export function createShipMesh() {
   const group = new THREE.Group();
+  const sc = CONFIG.ship;
 
-  // ── Fuselage: sleek elongated shape (two cones joined at base) ──
-  const noseCone = new THREE.ConeGeometry(0.08, 0.22, 8);
-  noseCone.rotateX(Math.PI / 2);
-  noseCone.translate(0, 0, 0.11);
-  const bodyMat = new THREE.MeshBasicMaterial({ color: 0x8ab4c8 });
-  group.add(new THREE.Mesh(noseCone, bodyMat));
+  // ── Load GLB model into group ──
+  const addModel = (source) => {
+    const clone = source.clone();
+    clone.scale.setScalar(sc.meshScale);
+    group.add(clone);
+  };
 
-  const rearCone = new THREE.ConeGeometry(0.1, 0.18, 8);
-  rearCone.rotateX(-Math.PI / 2);
-  rearCone.translate(0, 0, -0.06);
-  group.add(new THREE.Mesh(rearCone, bodyMat));
-
-  // Central body cylinder connecting the cones
-  const bodyCyl = new THREE.CylinderGeometry(0.085, 0.1, 0.06, 8);
-  bodyCyl.rotateX(Math.PI / 2);
-  bodyCyl.translate(0, 0, 0.0);
-  group.add(new THREE.Mesh(bodyCyl, bodyMat));
-
-  // ── Cockpit canopy — small emissive dome on top ──
-  const cockpitGeo = new THREE.SphereGeometry(0.04, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
-  const cockpitMat = new THREE.MeshBasicMaterial({ color: 0x60ddff });
-  const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat);
-  cockpit.position.set(0, 0.055, 0.06);
-  group.add(cockpit);
-
-  // ── Delta wings — custom triangular geometry for swept-back look ──
-  function makeWing(side) {
-    const verts = new Float32Array([
-      0, 0, 0.04,           // root leading edge
-      side * 0.28, -0.01, -0.12,  // tip (swept back, slightly down)
-      0, 0, -0.1,           // root trailing edge
-    ]);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
-    geo.computeVertexNormals();
-    const mat = new THREE.MeshBasicMaterial({ color: 0x6a9db0, side: THREE.DoubleSide });
-    return new THREE.Mesh(geo, mat);
+  if (cachedShipModel) {
+    addModel(cachedShipModel);
+  } else {
+    shipModelReady.then(addModel);
   }
-  group.add(makeWing(1));
-  group.add(makeWing(-1));
 
-  // ── Vertical stabilizer (dorsal fin) ──
-  const finVerts = new Float32Array([
-    0, 0.02, -0.04,   // base front
-    0, 0.14, -0.10,   // top
-    0, 0.02, -0.12,   // base rear
-  ]);
-  const finGeo = new THREE.BufferGeometry();
-  finGeo.setAttribute('position', new THREE.BufferAttribute(finVerts, 3));
-  finGeo.computeVertexNormals();
-  const finMat = new THREE.MeshBasicMaterial({ color: 0x7aaabb, side: THREE.DoubleSide });
-  group.add(new THREE.Mesh(finGeo, finMat));
-
-  // ── Engine nacelles — two small cylinders at wing roots ──
-  const nacelleGeo = new THREE.CylinderGeometry(0.025, 0.03, 0.12, 6);
-  nacelleGeo.rotateX(Math.PI / 2);
-  const nacelleMat = new THREE.MeshBasicMaterial({ color: 0x607888 });
-  const nac1 = new THREE.Mesh(nacelleGeo, nacelleMat);
-  nac1.position.set(0.1, -0.01, -0.06);
-  group.add(nac1);
-  const nac2 = new THREE.Mesh(nacelleGeo.clone(), nacelleMat);
-  nac2.position.set(-0.1, -0.01, -0.06);
-  group.add(nac2);
-
-  // ── Engine glow sprites (one per nacelle + main) ──
+  // ── Engine glow sprites ──
+  const half = sc.meshScale * 0.5;
   const glowCanvas = document.createElement('canvas');
   glowCanvas.width = 64; glowCanvas.height = 64;
   const gCtx = glowCanvas.getContext('2d');
@@ -99,17 +90,9 @@ export function createShipMesh() {
     s.position.set(x, y, z);
     return s;
   };
-  group.add(makeGlow(0, 0, -0.16, 0.14));     // main engine
-  group.add(makeGlow(0.1, -0.01, -0.13, 0.09)); // left nacelle
-  group.add(makeGlow(-0.1, -0.01, -0.13, 0.09)); // right nacelle
-
-  // ── Hull accent stripe (thin ring around body) ──
-  const stripGeo = new THREE.TorusGeometry(0.09, 0.004, 4, 16);
-  stripGeo.rotateX(Math.PI / 2);
-  const stripMat = new THREE.MeshBasicMaterial({ color: 0x50ccee });
-  const strip = new THREE.Mesh(stripGeo, stripMat);
-  strip.position.set(0, 0, 0.02);
-  group.add(strip);
+  group.add(makeGlow(0, 0, -half * 0.9, half * 0.35));       // main engine
+  group.add(makeGlow(half * 0.25, 0, -half * 0.8, half * 0.22)); // right nacelle
+  group.add(makeGlow(-half * 0.25, 0, -half * 0.8, half * 0.22)); // left nacelle
 
   group.renderOrder = 5;
   systemGroup.add(group);
