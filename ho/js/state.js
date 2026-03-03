@@ -21,6 +21,7 @@ export function createState(seed) {
     resolvedEvents: {},
     totalScans: 0,
     totalJumps: 0,
+    selectedShip: 'spaceship',
   };
 }
 
@@ -55,6 +56,8 @@ export function loadState() {
       s.totalScans = 0;
       s.totalJumps = 0;
     }
+    // v6.8 migration: selectedShip
+    if (!s.selectedShip) s.selectedShip = 'spaceship';
     // v5.2 migration: planetActions
     if (!s.planetActions) {
       s.planetActions = {};

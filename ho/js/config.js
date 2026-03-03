@@ -1,6 +1,16 @@
-export const VERSION = '6.7';
+export const VERSION = '6.8';
 
 export const CONFIG = {
+  ships: [
+    { id: 'spaceship',   name: 'Starfarer',       file: 'models/spaceship.glb' },
+    { id: 'spaceship-2', name: 'Starfarer Mk II',  file: 'models/spaceship-2.glb' },
+    { id: 'spaceship-3', name: 'Corsair',          file: 'models/spaceship-3.glb' },
+    { id: 'spaceship-4', name: 'Interceptor',      file: 'models/spaceship-4.glb' },
+    { id: 'spaceship-5', name: 'Vanguard',         file: 'models/spaceship-5.glb' },
+    { id: 'x-wing',      name: 'X-Wing',           file: 'models/x-wing.glb' },
+    { id: 'hubble',      name: 'Hubble Probe',     file: 'models/hubble.glb' },
+    { id: 'sputnik',     name: 'Sputnik',          file: 'models/sputnik.glb' },
+  ],
   galaxy: {
     seed: 42,
     starCount: 100,

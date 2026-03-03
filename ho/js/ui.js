@@ -1,7 +1,8 @@
 import { CONFIG, VERSION } from './config.js?v=6.0';
 import { app } from './app.js?v=6.0';
 import { getMaxFuel, getUpgradeEffects, calculateJumpFuelCost } from './gameplay.js?v=6.0';
-import { getDockedPlanetId } from './ship.js?v=6.0';
+import { getDockedPlanetId, swapShipModel } from './ship.js?v=6.0';
+import { saveState } from './state.js?v=6.0';
 
 const tooltipEl = document.getElementById('tooltip');
 const ttName = document.getElementById('tt-name');
@@ -230,6 +231,7 @@ export function updateHUD(galaxy, state) {
   updateDataDisplay(state);
   spStarsVal.textContent = `${state.visitedStars.size}/${galaxy.stars.length}`;
   spScannedVal.textContent = `${state.scannedPlanets.size}`;
+  updateShipLabel();
 }
 
 export function showLockMessage(msg) {
@@ -483,3 +485,55 @@ export function updateSystemPanel() {
   }
   syspPlanets.innerHTML = `<span>${total}</span> planets · <span>${explored}</span> complete`;
 }
+
+// ── Ship Picker ──
+
+const shipPicker = document.getElementById('ship-picker');
+const shipPickerGrid = document.getElementById('ship-picker-grid');
+const shipPickerClose = document.getElementById('ship-picker-close');
+const spChangeBtn = document.getElementById('sp-change-btn');
+const spLabel = document.getElementById('sp-label');
+
+function renderShipPicker() {
+  const selected = (app.state && app.state.selectedShip) || 'spaceship';
+  shipPickerGrid.innerHTML = '';
+  for (const ship of CONFIG.ships) {
+    const card = document.createElement('div');
+    card.className = 'sp-card' + (ship.id === selected ? ' selected' : '');
+    card.innerHTML = `<div class="sp-card-icon">▲</div><div class="sp-card-name">${ship.name}</div><div class="sp-card-status">${ship.id === selected ? 'Active' : 'Select'}</div>`;
+    card.addEventListener('click', () => {
+      if (!app.state) return;
+      app.state.selectedShip = ship.id;
+      saveState(app.state);
+      swapShipModel();
+      updateShipLabel();
+      renderShipPicker();
+    });
+    shipPickerGrid.appendChild(card);
+  }
+}
+
+function updateShipLabel() {
+  if (!spLabel) return;
+  const selected = (app.state && app.state.selectedShip) || 'spaceship';
+  const shipDef = CONFIG.ships.find(s => s.id === selected);
+  spLabel.textContent = shipDef ? shipDef.name : 'Explorer';
+}
+
+export function showShipPicker() {
+  renderShipPicker();
+  shipPicker.classList.add('visible');
+}
+
+export function hideShipPicker() {
+  shipPicker.classList.remove('visible');
+}
+
+if (spChangeBtn) {
+  spChangeBtn.addEventListener('click', () => showShipPicker());
+}
+if (shipPickerClose) {
+  shipPickerClose.addEventListener('click', () => hideShipPicker());
+}
+
+export { updateShipLabel };

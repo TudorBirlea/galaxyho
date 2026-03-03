@@ -9,43 +9,43 @@ const _lookAt = new THREE.Vector3();
 const _origin = new THREE.Vector3();
 
 // ────────────────────────────────────────────────────────────
-// Preload GLB ship model (cached for reuse across system views)
+// Preload all GLB ship models (cached for reuse across system views)
 // ────────────────────────────────────────────────────────────
 
-let cachedShipModel = null;
+const shipModelCache = new Map(); // id → pivot Group
 const gltfLoader = new GLTFLoader();
-const shipModelReady = new Promise((resolve) => {
-  gltfLoader.load('models/spaceship.glb', (gltf) => {
-    const model = gltf.scene;
 
-    // Compute bounding box to center and scale
-    const box = new THREE.Box3().setFromObject(model);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z);
+function loadShipModel(shipDef) {
+  return new Promise((resolve) => {
+    gltfLoader.load(shipDef.file, (gltf) => {
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
 
-    // Wrap in pivot: center + normalize to unit size
-    const pivot = new THREE.Group();
-    model.position.set(-center.x, -center.y, -center.z);
-    pivot.add(model);
-    const unitScale = 1.0 / maxDim;
-    pivot.scale.setScalar(unitScale);
+      const pivot = new THREE.Group();
+      model.position.set(-center.x, -center.y, -center.z);
+      pivot.add(model);
+      pivot.scale.setScalar(1.0 / maxDim);
 
-    // Convert to unlit MeshBasicMaterial (game has no scene lights)
-    model.traverse((child) => {
-      if (child.isMesh) {
-        const oldMat = child.material;
-        child.material = new THREE.MeshBasicMaterial({
-          color: oldMat.color ? oldMat.color.clone() : new THREE.Color(0x8ab4c8),
-        });
-        oldMat.dispose();
-      }
+      model.traverse((child) => {
+        if (child.isMesh) {
+          const oldMat = child.material;
+          child.material = new THREE.MeshBasicMaterial({
+            color: oldMat.color ? oldMat.color.clone() : new THREE.Color(0x8ab4c8),
+          });
+          oldMat.dispose();
+        }
+      });
+
+      shipModelCache.set(shipDef.id, pivot);
+      resolve(pivot);
     });
-
-    cachedShipModel = pivot;
-    resolve(pivot);
   });
-});
+}
+
+const shipModelsReady = Promise.all(CONFIG.ships.map(loadShipModel));
 
 // ────────────────────────────────────────────────────────────
 // Ship mesh creation (GLB model + engine glow sprites)
@@ -56,16 +56,21 @@ export function createShipMesh() {
   const sc = CONFIG.ship;
 
   // ── Load GLB model into group ──
+  const selectedId = (app.state && app.state.selectedShip) || 'spaceship';
   const addModel = (source) => {
     const clone = source.clone();
     clone.scale.setScalar(sc.meshScale);
     group.add(clone);
   };
 
-  if (cachedShipModel) {
-    addModel(cachedShipModel);
+  const cached = shipModelCache.get(selectedId);
+  if (cached) {
+    addModel(cached);
   } else {
-    shipModelReady.then(addModel);
+    shipModelsReady.then(() => {
+      const m = shipModelCache.get(selectedId) || shipModelCache.get('spaceship');
+      if (m) addModel(m);
+    });
   }
 
   // ── Engine glow sprites ──
@@ -564,6 +569,26 @@ export function getDockedPlanetId() {
   const orb = app.shipOrbit;
   if (!orb || orb.state !== 'docked') return null;
   return orb.dockedPlanetId;
+}
+
+export function swapShipModel() {
+  if (!app.shipMesh) return;
+  const sc = CONFIG.ship;
+  const selectedId = (app.state && app.state.selectedShip) || 'spaceship';
+  const cached = shipModelCache.get(selectedId) || shipModelCache.get('spaceship');
+  if (!cached) return;
+
+  // Remove old model children (keep sprites + don't touch thruster points)
+  const toRemove = [];
+  for (const child of app.shipMesh.children) {
+    if (!child.isSprite) toRemove.push(child);
+  }
+  toRemove.forEach(c => app.shipMesh.remove(c));
+
+  // Add new model
+  const clone = cached.clone();
+  clone.scale.setScalar(sc.meshScale);
+  app.shipMesh.add(clone);
 }
 
 export function clearShip() {

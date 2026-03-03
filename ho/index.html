@@ -260,6 +260,29 @@ canvas{display:block}
 .ug-buy-btn:disabled{opacity:0.3;cursor:default}
 .ug-owned{font-size:10px;color:rgba(80,200,140,0.55);letter-spacing:1.5px;text-transform:uppercase}
 .ug-locked{font-size:10px;color:rgba(255,255,255,0.18);letter-spacing:1.5px;text-transform:uppercase}
+
+/* ── Ship Picker Panel ── */
+#ship-picker{position:fixed;inset:0;background:rgba(6,8,16,0.92);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
+  z-index:46;opacity:0;pointer-events:none;transition:opacity 0.3s;display:flex;flex-direction:column;align-items:center;overflow-y:auto}
+#ship-picker.visible{opacity:1;pointer-events:auto}
+#ship-picker-header{width:100%;max-width:720px;display:flex;justify-content:space-between;align-items:center;padding:28px 28px 18px}
+#ship-picker-header span{font-size:15px;font-weight:500;color:rgba(255,255,255,0.55);letter-spacing:3px;text-transform:uppercase}
+#ship-picker-close{background:none;border:none;color:rgba(255,255,255,0.2);font-size:24px;cursor:pointer;padding:6px 12px;transition:color 0.2s}
+#ship-picker-close:hover{color:rgba(255,255,255,0.5)}
+#ship-picker-grid{width:100%;max-width:720px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:0 28px 28px}
+@media(max-width:700px){#ship-picker-grid{grid-template-columns:repeat(2,1fr)}}
+.sp-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px;
+  padding:20px 14px;cursor:pointer;transition:all 0.2s;text-align:center}
+.sp-card:hover{background:rgba(255,255,255,0.05);border-color:rgba(140,200,240,0.2)}
+.sp-card.selected{border-color:rgba(80,200,140,0.4);background:rgba(80,200,140,0.06)}
+.sp-card-icon{font-size:28px;margin-bottom:10px;color:rgba(138,180,200,0.5)}
+.sp-card-name{font-size:12px;color:rgba(255,255,255,0.55);letter-spacing:1px;margin-bottom:6px}
+.sp-card-status{font-size:9px;letter-spacing:1.5px;text-transform:uppercase}
+.sp-card.selected .sp-card-status{color:rgba(80,200,140,0.6)}
+.sp-card:not(.selected) .sp-card-status{color:rgba(255,255,255,0.2)}
+#sp-change-btn{background:none;border:none;color:rgba(138,180,200,0.4);font-size:9px;cursor:pointer;
+  letter-spacing:1.5px;text-transform:uppercase;font-family:inherit;padding:4px 0;transition:color 0.2s;margin-top:4px}
+#sp-change-btn:hover{color:rgba(138,180,200,0.7)}
 </style>
 </head>
 <body>
@@ -371,6 +394,15 @@ canvas{display:block}
     <span class="sp-row-label">Scanned</span>
     <span class="sp-row-val" id="sp-scanned-val">0</span>
   </div>
+  <button id="sp-change-btn">Change Ship</button>
+</div>
+
+<div id="ship-picker">
+  <div id="ship-picker-header">
+    <span>Select Ship</span>
+    <button id="ship-picker-close">&times;</button>
+  </div>
+  <div id="ship-picker-grid"></div>
 </div>
 
 <div id="system-panel">
