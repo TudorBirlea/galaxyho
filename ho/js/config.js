@@ -156,7 +156,7 @@ export const CONFIG = {
     opacity: 0.7,
   },
   ship: {
-    meshScale: 0.5,
+    meshScale: 0.05,
     thrusterParticleCount: 60,
     thrusterLifetime: 1.5,
     thrusterColor: [1.0, 0.7, 0.3],
