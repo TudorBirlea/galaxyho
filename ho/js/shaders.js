@@ -316,8 +316,16 @@ void main(){
 
   vec3 texCol=texture2D(u_tex,wUV).rgb;
 
-  float warmShift=(u_seed-0.5)*0.15;
-  texCol=mix(texCol,texCol*vec3(1.+warmShift,1.,1.-warmShift),0.4);
+  // Saturation boost — push colors toward vivid
+  float texLum0=dot(texCol,vec3(0.2126,0.7152,0.0722));
+  texCol=mix(vec3(texLum0),texCol,1.4);
+  texCol=max(texCol,vec3(0.));
+
+  // Contrast S-curve on texture — deepen darks, brighten brights
+  texCol=smoothstep(0.0,1.0,texCol);
+
+  float warmShift=(u_seed-0.5)*0.25;
+  texCol=mix(texCol,texCol*vec3(1.+warmShift,1.,1.-warmShift),0.5);
 
   float tp=u_type;
   bool emissive=false;
@@ -331,21 +339,21 @@ void main(){
     texCol=mix(texCol,vec3(0.90,0.93,0.97),polar*0.6);
   } else if(tp<1.5){
     float dunes=pfbm(nn+vec3(8.),5.,3)*0.5+0.5;
-    texCol*=0.85+dunes*0.3;
+    texCol*=0.80+dunes*0.40;
     float dusty=exp(-nn.y*nn.y*8.)*pfbm(nn+vec3(time*0.002),1.5,4)*0.5;
-    texCol=mix(texCol,vec3(0.70,0.50,0.30),clamp(dusty,0.,1.)*0.15);
+    texCol=mix(texCol,vec3(0.75,0.45,0.22),clamp(dusty,0.,1.)*0.20);
   } else if(tp<2.5){
     float cr1=1.-smoothstep(0.,0.06,abs(snoise(nn*5.)));
     float cr2=1.-smoothstep(0.,0.04,abs(snoise(nn*3.5+vec3(20.))));
     float cracks=max(cr1*0.8,cr2*0.5);
-    texCol=mix(texCol,vec3(0.08,0.15,0.30),cracks*0.4);
+    texCol=mix(texCol,vec3(0.05,0.12,0.35),cracks*0.5);
     float frost=smoothstep(0.85,0.95,abs(nn.y));
     texCol=mix(texCol,vec3(0.90,0.93,0.97),frost*0.3);
   } else if(tp<3.5){
     float turb=pfbm(nn*1.5+vec3(time*0.002,0.,0.),3.,4);
     float wisps=pfbm(nn*3.+vec3(nn.y*2.+time*0.003,0.,0.),5.,3);
-    texCol*=1.+turb*0.12;
-    texCol+=vec3(0.04,0.06,0.10)*smoothstep(0.2,0.6,wisps);
+    texCol*=1.+turb*0.20;
+    texCol+=vec3(0.06,0.09,0.15)*smoothstep(0.2,0.6,wisps);
   } else if(tp<4.5){
     emissive=true;
     float v1=abs(snoise(nn*4.+vec3(time*0.005,0.,0.)));
@@ -355,8 +363,8 @@ void main(){
     float heat=clamp(veins*0.75+pools*0.18,0.,1.);
     emissiveHeat=heat;
     float pulse=0.90+0.10*sin(time*0.2+pfbm(nn,2.,4)*4.);
-    vec3 magma=mix(vec3(0.70,0.10,0.),vec3(1.,0.55,0.05),heat);
-    texCol=mix(texCol*0.6,magma*pulse,heat*0.8);
+    vec3 magma=mix(vec3(0.80,0.08,0.),vec3(1.,0.60,0.05),heat);
+    texCol=mix(texCol*0.45,magma*pulse*1.3,heat*0.85);
   } else if(tp<5.5){
     float cl=pfbm(nn*0.9+vec3(time*0.007,time*0.004,0.),2.5,5);
     float cover=smoothstep(-0.10,0.40,cl);
@@ -379,30 +387,37 @@ void main(){
   float NdL=dot(N,L);
   float lit=smoothstep(-0.08,0.20,NdL);
 
-  float texLum=dot(surface,vec3(0.2126,0.7152,0.0722));
-  surface=mix(surface,vec3(texLum),smoothstep(0.45,0.85,texLum)*0.25);
-
   vec3 col;
   if(emissive){
-    vec3 crustCol=surface*(0.015+lit*0.55);
-    vec3 magmaCol=surface*(0.12+lit*0.40);
+    vec3 crustCol=surface*(0.008+lit*0.65);
+    vec3 magmaCol=surface*(0.15+lit*0.50);
     col=mix(crustCol,magmaCol,emissiveHeat);
   } else {
-    col=surface*(0.015+lit*0.65);
+    col=surface*(0.008+lit*0.85);
     if(tp<0.5){
       float brightness=dot(surface,vec3(0.3,0.5,0.2));
       float waterMask=1.-smoothstep(0.05,0.18,brightness);
       vec3 halfDir=normalize(L+V);
       float spec=pow(max(dot(N,halfDir),0.),60.);
-      col+=vec3(1.,0.97,0.90)*spec*0.12*lit*waterMask;
+      col+=vec3(1.,0.97,0.90)*spec*0.22*lit*waterMask;
     } else if(tp>4.5){
       vec3 halfDir=normalize(L+V);
       float spec=pow(max(dot(N,halfDir),0.),60.);
-      col+=vec3(1.,0.98,0.92)*spec*0.18*lit;
+      col+=vec3(1.,0.98,0.92)*spec*0.30*lit;
     } else if(tp>1.5&&tp<2.5){
       vec3 halfDir=normalize(L+V);
       float spec=pow(max(dot(N,halfDir),0.),40.);
-      col+=vec3(0.9,0.95,1.)*spec*0.10*lit;
+      col+=vec3(0.9,0.95,1.)*spec*0.18*lit;
+    } else if(tp>0.5&&tp<1.5){
+      // Desert specular — dry mineral sheen
+      vec3 halfDir=normalize(L+V);
+      float spec=pow(max(dot(N,halfDir),0.),30.);
+      col+=vec3(1.,0.90,0.70)*spec*0.10*lit;
+    } else if(tp>2.5&&tp<3.5){
+      // Gas giant specular — cloud sheen
+      vec3 halfDir=normalize(L+V);
+      float spec=pow(max(dot(N,halfDir),0.),25.);
+      col+=vec3(0.85,0.90,1.)*spec*0.12*lit;
     }
   }
 
@@ -410,11 +425,11 @@ void main(){
   if(u_atmosStr>0.01){
     float NdV=max(dot(N,V),0.);
     float rim=pow(1.-NdV,4.0);
-    col+=u_atmosCol*rim*u_atmosStr*(0.08+lit*0.55);
+    col+=u_atmosCol*rim*u_atmosStr*(0.12+lit*0.70);
   }
 
-  col=ACESFilm(col*1.2);
-  col=pow(col,vec3(0.96));
+  col=ACESFilm(col*1.6);
+  col=pow(col,vec3(1.05));
   gl_FragColor=vec4(col,1.);
 }`;
 
