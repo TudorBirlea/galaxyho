@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Black Hole Lab</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'SF Mono','Fira Code',monospace;color:#ccc}
+canvas{display:block}
+#panel{position:fixed;top:10px;right:10px;width:260px;background:rgba(0,0,5,0.82);
+  border:1px solid rgba(80,120,255,0.25);border-radius:8px;padding:12px;
+  backdrop-filter:blur(8px);font-size:11px;z-index:10;display:flex;flex-direction:column;gap:4px}
+#panel h3{color:#7af;margin-bottom:4px;font-size:12px;letter-spacing:.05em}
+.section{color:#567;font-size:9px;text-transform:uppercase;letter-spacing:.1em;margin:6px 0 2px}
+.row{display:flex;align-items:center;gap:6px}
+.row label{flex:1;font-size:10px;color:#9ab}
+.row input[type=range]{flex:1.4;height:2px;accent-color:#6af;cursor:pointer}
+.row .val{width:38px;text-align:right;font-size:10px;color:#6cf;font-variant-numeric:tabular-nums}
+.row input[type=checkbox]{accent-color:#6af}
+#fps{position:fixed;top:10px;left:10px;font-size:11px;color:#5a8;z-index:10}
+#hint{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);
+  font-size:10px;color:#445;letter-spacing:.05em}
+</style>
+</head>
+<body>
+<div id="fps">-- fps</div>
+<div id="panel">
+  <h3>⬤ Black Hole Lab</h3>
+
+  <div class="section">Disk</div>
+  <div class="row"><label>Tilt</label>
+    <input type="range" id="diskTilt" min="0" max="1.5707" value="0.35" step="0.01">
+    <span class="val" id="diskTiltV">0.35</span></div>
+  <div class="row"><label>Outer Radius</label>
+    <input type="range" id="diskOuter" min="3" max="16" value="9" step="0.5">
+    <span class="val" id="diskOuterV">9.0</span></div>
+  <div class="row"><label>Brightness</label>
+    <input type="range" id="diskBright" min="0.2" max="5" value="1.8" step="0.1">
+    <span class="val" id="diskBrightV">1.8</span></div>
+  <div class="row"><label>Doppler</label>
+    <input type="range" id="dopplerStr" min="0" max="2" value="0.85" step="0.05">
+    <span class="val" id="dopplerStrV">0.85</span></div>
+  <div class="row"><label>Inner Fade</label>
+    <input type="range" id="innerFade" min="1.5" max="5" value="3.5" step="0.1">
+    <span class="val" id="innerFadeV">3.5</span></div>
+
+  <div class="section">Lensing</div>
+  <div class="row"><label>Bend Strength</label>
+    <input type="range" id="bendStr" min="0.5" max="3" value="1.5" step="0.05">
+    <span class="val" id="bendStrV">1.50</span></div>
+  <div class="row"><label>Steps</label>
+    <input type="range" id="steps" min="30" max="160" value="80" step="10">
+    <span class="val" id="stepsV">80</span></div>
+  <div class="row"><label>Step Scale</label>
+    <input type="range" id="stepScale" min="0.02" max="0.2" value="0.08" step="0.005">
+    <span class="val" id="stepScaleV">0.080</span></div>
+  <div class="row"><label>Einstein Ring</label>
+    <input type="checkbox" id="einsteinGlow" checked>
+    <span class="val"></span></div>
+
+  <div class="section">Output</div>
+  <div class="row"><label>Exposure</label>
+    <input type="range" id="exposure" min="0.2" max="3" value="0.85" step="0.05">
+    <span class="val" id="exposureV">0.85</span></div>
+  <div class="row"><label>Gamma</label>
+    <input type="range" id="gamma" min="0.7" max="1.3" value="0.9" step="0.02">
+    <span class="val" id="gammaV">0.90</span></div>
+</div>
+<div id="hint">drag to orbit · scroll to zoom</div>
+
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+
+// ─── Renderer ───────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 2000);
+camera.position.set(0, 4, 14);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.minDistance = 3;
+controls.maxDistance = 60;
+
+// ─── Uniforms (live-tweakable) ───────────────────────────────────────────────
+const U = {
+  u_time:      { value: 0 },
+  u_starRadius:{ value: 4.0 },
+  u_invViewProj:{ value: new THREE.Matrix4() },
+  u_diskTilt:  { value: 0.35 },
+  u_diskOuter: { value: 9.0 },
+  u_diskBright:{ value: 1.8 },
+  u_dopplerStr:{ value: 0.85 },
+  u_innerFade: { value: 3.5 },
+  u_bendStr:   { value: 1.5 },
+  u_steps:     { value: 80 },
+  u_stepScale: { value: 0.08 },
+  u_einsteinGlow:{ value: true },
+  u_exposure:  { value: 0.85 },
+  u_gamma:     { value: 0.9 },
+};
+
+// ─── Shader ─────────────────────────────────────────────────────────────────
+const VERT = `varying vec2 vUV;
+void main(){ vUV=position.xy; gl_Position=vec4(position.xy,0.9999,1.); }`;
+
+const FRAG = `precision highp float;
+varying vec2 vUV;
+uniform float u_time;
+uniform float u_starRadius;
+uniform mat4  u_invViewProj;
+uniform float u_diskTilt;
+uniform float u_diskOuter;
+uniform float u_diskBright;
+uniform float u_dopplerStr;
+uniform float u_innerFade;
+uniform float u_bendStr;
+uniform int   u_steps;
+uniform float u_stepScale;
+uniform bool  u_einsteinGlow;
+uniform float u_exposure;
+uniform float u_gamma;
+
+vec3 ACESFilm(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.,1.); }
+
+// Blackbody: t=0 → deep red, t=0.35 → orange, t=0.65 → yellow-white, t=1 → blue-white
+vec3 blackbody(float t){
+  t = clamp(t,0.,1.);
+  vec3 lo = mix(vec3(0.95,0.08,0.01), vec3(1.0,0.55,0.08), smoothstep(0.,0.35,t));
+  vec3 mi = mix(vec3(1.0,0.55,0.08),  vec3(1.0,0.93,0.62), smoothstep(0.35,0.65,t));
+  vec3 hi = mix(vec3(1.0,0.93,0.62),  vec3(0.68,0.82,1.0), smoothstep(0.65,1.,t));
+  return t<0.35 ? lo : (t<0.65 ? mi : hi);
+}
+
+// Star field (spherical)
+vec3 bgStars(vec3 rd){
+  vec3 col = vec3(0.);
+  float theta = acos(clamp(rd.y,-1.,1.));
+  float phi   = atan(rd.z, rd.x);
+  for(int L=0; L<2; L++){
+    float fl = float(L);
+    float dn = 140. + fl*100.;
+    vec2 ci = floor(vec2(phi*dn, theta*dn));
+    vec2 cu = fract(vec2(phi*dn, theta*dn)) - .5;
+    float h = fract(sin(dot(ci+fl*50., vec2(127.1,311.7)))*43758.5453);
+    if(h > 0.965){
+      vec2 of = vec2(fract(sin(dot(ci+fl*50.,vec2(269.5,183.3)))*43758.5453),
+                     fract(sin(dot(ci+fl*50.,vec2(419.2,371.9)))*43758.5453)) - .5;
+      float d  = length(cu - of*.6);
+      float br = (h-.965)/.035;
+      float tw = .7 + .3*sin(u_time*(1.+h*3.)+h*100.);
+      col += mix(vec3(.6,.7,1.),vec3(1.,.85,.7),fract(h*7.))
+             * exp(-d*d*900.) * br * tw * (1.-fl*.3) * .6;
+    }
+  }
+  return col;
+}
+
+// Accretion disk at (r, angle) in Schwarzschild units
+// sinPhi = dot(Keplerian tangent, ray dir) for Doppler
+vec4 evalDisk(float r, float angle, float sinPhi){
+  if(r < 2. || r > u_diskOuter) return vec4(0.);
+
+  // Temperature: power-law T ~ r^-0.75 (inner hottest)
+  float tNorm = pow(2./max(r,2.), .75);
+
+  // Keplerian angular velocity ∝ r^-1.5
+  float w = .4 / sqrt(max(r,2.));
+
+  // Layered rings: differential rotation → natural shear
+  float ring1 = .5+.5*sin(r*3.1  - u_time*w      );
+  float ring2 = .5+.5*sin(r*7.8  - u_time*w*2.4 + 1.3);
+  float ring3 = .5+.5*sin(r*14.  - u_time*w*4.1 + 2.7);  // thin bright ring
+  float arc   = .5+.5*sin(angle*5. + r*1.2 + u_time*.1);
+  float tex   = ring1*.35 + ring2*.20 + ring3*.15 + arc*.30;
+
+  float density = tNorm * tex * u_diskBright;
+  density *= smoothstep(2., u_innerFade, r);              // inner fade (ISCO)
+  density *= smoothstep(u_diskOuter, u_diskOuter*.6, r);  // outer fade
+
+  // Relativistic Doppler D^3 flux beaming
+  float beta = clamp(1./sqrt(max(r,2.)), 0., .72);
+  float denom = max(1. - sinPhi*beta*u_dopplerStr, 0.18);
+  float D = clamp(1./denom, .15, 6.);
+  density *= D*D*D;
+
+  // Doppler-shifted blackbody temperature (approaching=hotter=bluer)
+  float colorT = clamp(tNorm * D * .75, 0., 1.);
+  vec3 col = blackbody(colorT) * density;
+  return vec4(col, clamp(density*.45, 0., .92));
+}
+
+void main(){
+  // Reconstruct world-space ray
+  vec4 fc = u_invViewProj * vec4(vUV, 1., 1.);  fc /= fc.w;
+  vec3 vel = normalize(fc.xyz - cameraPosition);
+  vec3 pos = cameraPosition / u_starRadius;
+
+  // Tilted disk plane normal
+  float ct = cos(u_diskTilt), st = sin(u_diskTilt);
+  vec3 diskN = vec3(0., ct, st);
+
+  vec3 col   = vec3(0.);
+  float alpha = 0.;        // front-to-back compositor
+  bool captured = false;
+  float prevDot = dot(pos, diskN);
+
+  for(int i=0; i<160; i++){
+    if(i >= u_steps) break;
+
+    float r = length(pos);
+    if(r < 1.){ captured = true; break; }
+    if(r > 80. && i > 4) break;
+
+    // Adaptive step: tight near horizon, coarse far out
+    float dt = clamp(u_stepScale*(r-1.), .008, .6);
+
+    // Gravitational bending: a = -bendStr/r³ · pos  → photon sphere at r = (bendStr)^(1/2)
+    // bendStr=1.5 → photon sphere at r=1.5rs (correct Schwarzschild)
+    vel = normalize(vel - (u_bendStr/(r*r*r))*pos*dt);
+
+    vec3 np = pos + vel*dt;
+    float nd = dot(np, diskN);
+
+    // Analytic disk crossing — front-to-back compositing
+    if(prevDot*nd < 0. && alpha < .97){
+      float t = prevDot/(prevDot-nd);
+      vec3 cp = mix(pos, np, t);
+      float cr = length(cp);
+      if(cr >= 2. && cr <= u_diskOuter+.5){
+        // Keplerian tangent (disk-plane, CCW)
+        vec3 inPlane = normalize(cp - dot(cp,diskN)*diskN);
+        float sinPhi = dot(normalize(cross(diskN, inPlane)), vel);
+        vec4 disk = evalDisk(cr, atan(cp.z, cp.x), sinPhi);
+        if(disk.a > .004){
+          float w = disk.a*(1.-alpha);
+          col   += disk.rgb*w;
+          alpha += w;
+        }
+      }
+    }
+    prevDot = nd;
+    pos     = np;
+  }
+
+  // Background stars + optional Einstein ring amplification
+  if(!captured){
+    vec3 bg = bgStars(normalize(vel));
+    if(u_einsteinGlow){
+      vec3 dx = dFdx(vel), dy = dFdy(vel);
+      float amp = clamp(.0001/(length(cross(dx,dy))+.00005), 1., 35.);
+      bg *= amp;
+    }
+    col += bg*(1.-alpha);
+  }
+
+  col = ACESFilm(col * u_exposure);
+  col = pow(col, vec3(u_gamma));
+  gl_FragColor = vec4(col, 1.);
+}`;
+
+const bhMat = new THREE.ShaderMaterial({
+  vertexShader: VERT,
+  fragmentShader: FRAG,
+  uniforms: U,
+  depthWrite: false,
+  depthTest: false,
+});
+const bhQuad = new THREE.Mesh(new THREE.PlaneGeometry(2,2), bhMat);
+bhQuad.frustumCulled = false;
+bhQuad.renderOrder = -1;
+scene.add(bhQuad);
+
+// ─── Slider wiring ──────────────────────────────────────────────────────────
+function wire(id, uniform, decimals=2){
+  const el = document.getElementById(id);
+  const vEl = document.getElementById(id+'V');
+  if(!el) return;
+  const update = () => {
+    const v = parseFloat(el.value);
+    if(vEl) vEl.textContent = v.toFixed(decimals);
+    U[uniform].value = v;
+  };
+  el.addEventListener('input', update);
+  update();
+}
+function wireCb(id, uniform){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.addEventListener('change', e => { U[uniform].value = e.target.checked; });
+}
+
+wire('diskTilt',   'u_diskTilt',   2);
+wire('diskOuter',  'u_diskOuter',  1);
+wire('diskBright', 'u_diskBright', 1);
+wire('dopplerStr', 'u_dopplerStr', 2);
+wire('innerFade',  'u_innerFade',  1);
+wire('bendStr',    'u_bendStr',    2);
+wire('steps',      'u_steps',      0);
+wire('stepScale',  'u_stepScale',  3);
+wire('exposure',   'u_exposure',   2);
+wire('gamma',      'u_gamma',      2);
+wireCb('einsteinGlow', 'u_einsteinGlow');
+
+// ─── Loop ────────────────────────────────────────────────────────────────────
+const fpsEl = document.getElementById('fps');
+let fc=0, lt=performance.now();
+const clock = new THREE.Clock();
+const invVP = new THREE.Matrix4();
+
+(function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  U.u_time.value = clock.getElapsedTime();
+  invVP.copy(camera.projectionMatrix).multiply(camera.matrixWorldInverse).invert();
+  U.u_invViewProj.value.copy(invVP);
+  renderer.render(scene, camera);
+  fc++;
+  const now = performance.now();
+  if(now-lt > 500){
+    fpsEl.textContent = Math.round(fc/((now-lt)/1000)) + ' fps';
+    fc=0; lt=now;
+  }
+})();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
