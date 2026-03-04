@@ -954,7 +954,7 @@ void main(){
   gl_FragColor = vec4(u_color * (1.0 + (1.0 - d) * 0.3), alpha);
 }`;
 
-// ── v7.13: Black hole — two-pass (disk behind / shadow on top) ─────────────
+// ── v7.14: Black hole — single pass at renderOrder:10 ─────────────────────
 
 export const BLACK_HOLE_FRAG = `precision highp float;
 varying vec2 vUV;
@@ -970,7 +970,6 @@ uniform float u_bendStr;
 uniform float u_stepScale;
 uniform float u_exposure;
 uniform float u_gamma;
-uniform bool  u_shadowOnly;   // false=disk+background pass, true=shadow-only pass
 
 vec3 ACESFilm(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.,1.); }
 
@@ -1031,22 +1030,7 @@ void main(){
   vec3 diskN=vec3(0.,cos(u_diskTilt),sin(u_diskTilt));
   bool captured=false;
 
-  // Shadow-only pass: fast capture detection, no disk work
-  if(u_shadowOnly){
-    for(int i=0;i<100;i++){
-      float r=length(pos);
-      if(r<1.){captured=true;break;}
-      if(r>80.&&i>4) break;
-      float dt=clamp(u_stepScale*(r-1.),.008,r*.15);
-      vel=normalize(vel-(u_bendStr/(r*r*r))*pos*dt);
-      pos+=vel*dt;
-    }
-    if(!captured) discard;
-    gl_FragColor=vec4(0.,0.,0.,1.);
-    return;
-  }
-
-  // Disk+background pass
+  // Single pass — disk + shadow + lensed background
   vec3 col=vec3(0.);
   float alpha=0.;
   float prevDot=dot(pos,diskN);
@@ -1076,8 +1060,8 @@ void main(){
     prevDot=nd; pos=np;
   }
 
-  // Captured pixels handled by shadow pass — discard here so planets show through
-  if(captured){ discard; return; }
+  // Captured = event horizon shadow; draw solid black over everything
+  if(captured){ gl_FragColor=vec4(0.,0.,0.,1.); return; }
 
   vec3 bg=bgStars(normalize(vel));
   vec3 dx=dFdx(vel),dy=dFdy(vel);
