@@ -954,7 +954,7 @@ void main(){
   gl_FragColor = vec4(u_color * (1.0 + (1.0 - d) * 0.3), alpha);
 }`;
 
-// ── v3: Black hole system view shader — geodesic ray marching + accretion disk ──
+// ── v7.11: Black hole — simple acceleration lensing + analytic disk + front-to-back compositing ──
 
 export const BLACK_HOLE_FRAG = `precision highp float;
 varying vec2 vUV;
@@ -965,151 +965,132 @@ uniform float u_diskTilt;
 uniform float u_diskOuter;
 uniform float u_diskBright;
 uniform float u_dopplerStr;
-uniform float u_spiralStr;
 uniform float u_exposure;
-${NOISE_GLSL}
 
 vec3 ACESFilm(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.,1.);}
 
-// Blackbody color ramp (0=deep red → 1=blue-white)
+// Blackbody: t=0 → deep red, t=0.5 → orange-white, t=1 → blue-white
 vec3 blackbody(float t){
-  vec3 a=mix(vec3(0.8,0.15,0.02),vec3(1.,0.45,0.08),clamp(t/0.3,0.,1.));
-  vec3 b=mix(vec3(1.,0.45,0.08),vec3(1.,0.85,0.6),clamp((t-0.3)/0.3,0.,1.));
-  vec3 c=mix(vec3(1.,0.85,0.6),vec3(0.8,0.85,1.),clamp((t-0.6)/0.4,0.,1.));
-  return t<0.3?a:t<0.6?b:c;
+  t=clamp(t,0.,1.);
+  vec3 lo=mix(vec3(0.9,0.1,0.01),vec3(1.0,0.55,0.1),smoothstep(0.,0.35,t));
+  vec3 mi=mix(vec3(1.0,0.55,0.1),vec3(1.0,0.92,0.65),smoothstep(0.35,0.65,t));
+  vec3 hi=mix(vec3(1.0,0.92,0.65),vec3(0.7,0.85,1.0),smoothstep(0.65,1.,t));
+  return t<0.35?lo:t<0.65?mi:hi;
 }
 
-// Disk basis (tilted plane)
-mat3 diskBasis;
-vec3 diskNormal;
-void initDiskBasis(float tilt){
-  float c=cos(tilt),s=sin(tilt);
-  diskBasis=mat3(1.,0.,0., 0.,c,-s, 0.,s,c);
-  diskNormal=vec3(0.,c,s);
-}
-
-// Accretion disk with Novikov-Thorne temperature + Doppler + grav redshift
-vec4 evalDisk(float r, float angle, vec3 rd){
-  if(r<1.5||r>u_diskOuter) return vec4(0.);
-
-  // Novikov-Thorne temperature: peaks at r~4.08, zero below ISCO(3)
-  float tNorm=0.;
-  if(r>=3.){
-    tNorm=pow(max((1.-sqrt(3./r))/(r*r*r),0.),0.25)/0.2217;
-  }
-  float plunge=smoothstep(1.5,3.,r);
-  tNorm*=plunge;
-
-  // Brightness + outer fade
-  float density=pow(max(tNorm,0.01),3.)*u_diskBright*plunge
-    *smoothstep(u_diskOuter,u_diskOuter-1.5,r);
-
-  // Spiral noise (single sample) — clamped to prevent negative density
-  density*=max((1.-u_spiralStr)+u_spiralStr*
-    snoise(vec3(angle*2.-r*0.8+u_time*0.12,r*2.,u_time*0.04)),0.0);
-
-  // Doppler D^3
-  vec3 tW=transpose(diskBasis)*vec3(-sin(angle),0.,cos(angle));
-  float dShift=dot(tW*(0.5/sqrt(max(r,1.5))),normalize(rd));
-  float D=clamp(1./(1.-dShift*u_dopplerStr),0.15,4.);
-  density*=D*D*D;
-
-  // Doppler + gravitational redshift → color
-  float tS=tNorm/clamp(1.-dShift*1.5,0.4,2.5);
-  tS*=sqrt(max(1.-1./r,0.05));
-  return vec4(blackbody(clamp(tS,0.,1.))*density,density);
-}
-
-// Background stars (2 layers — fast hash)
+// Procedural star field (spherical direction rd)
 vec3 bgStars(vec3 rd){
   vec3 col=vec3(0.);
   float theta=acos(clamp(rd.y,-1.,1.));
   float phi=atan(rd.z,rd.x);
   for(int L=0;L<2;L++){
     float fl=float(L);
-    float dens=140.+fl*100.;
-    vec2 grid=vec2(phi*dens,theta*dens);
-    vec2 cid=floor(grid);
-    vec2 cuv=fract(grid)-0.5;
-    float h=fract(sin(dot(cid+fl*50.,vec2(127.1,311.7)))*43758.5453);
+    float dn=140.+fl*100.;
+    vec2 ci=floor(vec2(phi*dn,theta*dn));
+    vec2 cu=fract(vec2(phi*dn,theta*dn))-.5;
+    float h=fract(sin(dot(ci+fl*50.,vec2(127.1,311.7)))*43758.5453);
     if(h>0.965){
-      vec2 off=vec2(fract(sin(dot(cid+fl*50.,vec2(269.5,183.3)))*43758.5453),
-                    fract(sin(dot(cid+fl*50.,vec2(419.2,371.9)))*43758.5453))-0.5;
-      float d=length(cuv-off*0.6);
-      float br=(h-0.965)/0.035;
-      float tw=0.7+0.3*sin(u_time*(1.+h*3.)+h*100.);
-      col+=mix(vec3(0.6,0.7,1.),vec3(1.,0.85,0.7),fract(h*7.))
-           *exp(-d*d*900.)*br*tw*(1.-fl*0.3)*0.6;
+      vec2 of=vec2(fract(sin(dot(ci+fl*50.,vec2(269.5,183.3)))*43758.5453),
+                   fract(sin(dot(ci+fl*50.,vec2(419.2,371.9)))*43758.5453))-.5;
+      float d=length(cu-of*.6);
+      float br=(h-.965)/.035;
+      float tw=.7+.3*sin(u_time*(1.+h*3.)+h*100.);
+      col+=mix(vec3(.6,.7,1.),vec3(1.,.85,.7),fract(h*7.))
+           *exp(-d*d*900.)*br*tw*(1.-fl*.3)*.6;
     }
   }
   return col;
 }
 
+// Accretion disk: r in Schwarzschild units, sinPhi = Doppler component
+vec4 evalDisk(float r, float angle, float sinPhi){
+  if(r<2.||r>u_diskOuter) return vec4(0.);
+
+  // Power-law temperature: inner edge hottest
+  float tNorm=pow(2./max(r,2.),.75);
+
+  // Layered texture: Keplerian rings + azimuthal arcs
+  float w=.4/sqrt(max(r,2.));          // angular velocity ∝ r^{-3/2}
+  float r1=.5+.5*sin(r*3.2-u_time*w);
+  float r2=.5+.5*sin(r*7.5-u_time*w*2.3+1.4);
+  float ar=.5+.5*sin(angle*5.+r*1.1+u_time*.1);
+  float tex=r1*.4+r2*.2+ar*.4;
+
+  float density=tNorm*tex*u_diskBright;
+  density*=smoothstep(2.,4.5,r);                        // inner fade (ISCO~3rs)
+  density*=smoothstep(u_diskOuter,u_diskOuter*.65,r);   // outer fade
+
+  // Relativistic Doppler beaming D^3
+  float beta=clamp(1./sqrt(max(r,2.)),.0,.7);           // Keplerian v/c
+  float D=clamp(1./max(1.-sinPhi*beta*u_dopplerStr,.2),.15,5.);
+  density*=D*D*D;
+
+  // Doppler-shifted blackbody color (inner=hot/blue, outer=cool/red)
+  float colorT=clamp(tNorm*D*.8,0.,1.);
+  vec3 col=blackbody(colorT)*density;
+  return vec4(col, clamp(density*.5,0.,.9));
+}
+
 void main(){
+  // Reconstruct world-space ray
   vec4 fc=u_invViewProj*vec4(vUV,1.,1.); fc/=fc.w;
-  vec3 rd=normalize(fc.xyz-cameraPosition);
-  vec3 ro=cameraPosition/u_starRadius;
-  initDiskBasis(u_diskTilt);
+  vec3 vel=normalize(fc.xyz-cameraPosition);
+  vec3 pos=cameraPosition/u_starRadius;
 
-  vec3 pos=ro, vel=rd;
-  float h2=dot(cross(pos,vel),cross(pos,vel));
+  // Tilted disk plane normal
+  vec3 diskN=normalize(vec3(0.,cos(u_diskTilt),sin(u_diskTilt)));
+
   vec3 col=vec3(0.);
-  float dAcc=0.;
-  bool hit=false;
-  float prevY=dot(pos,diskNormal);
-  int nCross=0;
+  float alpha=0.;      // front-to-back compositor
+  bool captured=false;
+  float prevDot=dot(pos,diskN);
 
-  for(int i=0;i<100;i++){
+  for(int i=0;i<80;i++){
     float r=length(pos);
-    if(r<1.){hit=true;break;}
-    if(r>50.&&i>3)break;
+    if(r<1.){captured=true;break;}
+    if(r>80.&&i>4) break;
 
-    float sp=length(vel);
-    float dt=clamp(min((r-1.)*0.3,abs(r-1.5)*0.25+0.008),0.008,0.5)/max(sp,0.5);
+    // Adaptive step: tight near horizon, coarse far out
+    float dt=clamp(.08*(r-1.),.015,.5);
 
-    // Velocity Verlet
-    float r3=r*r*r, r5=r3*r*r;
-    vec3 a1=-1.5*h2*pos/r5;
-    vec3 np=pos+vel*dt+0.5*a1*dt*dt;
-    float nr=length(np);
-    if(nr<1.){hit=true;break;}
-    float nr5=nr*nr*nr*nr*nr;
-    vel+=0.5*(a1-1.5*h2*np/max(nr5,0.001))*dt;
+    // Gravitational bending: a = -1.5/r³ · pos  (gives photon sphere at r=1.5)
+    vel=normalize(vel-(1.5/(r*r*r))*pos*dt);
 
-    // Disk crossings (up to 4)
-    float curY=dot(np,diskNormal);
-    if(prevY*curY<0.&&dAcc<0.98&&nCross<4){
-      nCross++;
-      vec3 cp=mix(pos,np,prevY/(prevY-curY));
+    vec3 np=pos+vel*dt;
+    float nd=dot(np,diskN);
+
+    // Analytic disk crossing — front-to-back composite
+    if(prevDot*nd<0.&&alpha<.97){
+      float t=prevDot/(prevDot-nd);
+      vec3 cp=mix(pos,np,t);
       float cr=length(cp);
-      if(cr>1.5){
-        vec3 cd=diskBasis*cp;
-        vec4 d=evalDisk(length(cd.xz),atan(cd.z,cd.x),normalize(vel));
-        if(d.a>0.001){
-          float a=min(d.a*0.8*exp(-float(nCross-1)*2.2),1.-dAcc);
-          col+=d.rgb*a; dAcc+=a;
+      if(cr>=2.&&cr<=u_diskOuter+.5){
+        // Keplerian tangent for Doppler
+        vec3 inPlane=normalize(cp-dot(cp,diskN)*diskN);
+        float sinPhi=dot(normalize(cross(diskN,inPlane)),vel);
+        vec4 disk=evalDisk(cr,atan(cp.z,cp.x),sinPhi);
+        if(disk.a>.005){
+          float w=disk.a*(1.-alpha);
+          col+=disk.rgb*w;
+          alpha+=w;
         }
       }
     }
-    prevY=curY;
+    prevDot=nd;
     pos=np;
   }
 
-  if(hit){col=vec3(0.);dAcc=0.;}
-
-  // Background + Einstein ring brightening
-  if(!hit){
-    vec3 fd=normalize(vel);
-    vec3 bg=bgStars(fd);
-    vec3 dx=dFdx(fd),dy=dFdy(fd);
-    bg*=clamp(0.00012/(length(cross(dx,dy))+0.00004),1.,20.);
-    col+=bg*(1.-dAcc);
+  // Background: lensed star field + Einstein ring amplification
+  if(!captured){
+    vec3 bg=bgStars(normalize(vel));
+    vec3 dx=dFdx(vel),dy=dFdy(vel);
+    float amp=clamp(.0001/(length(cross(dx,dy))+.00005),1.,30.);
+    col+=bg*amp*(1.-alpha);
   }
 
   col=ACESFilm(col*u_exposure);
-  col*=1.-0.12*dot(vUV*0.5,vUV*0.5);
-  col=pow(col,vec3(0.92));
-  gl_FragDepth = hit ? 0.0 : 0.9999;
+  col=pow(col,vec3(.9));
+  gl_FragDepth=captured?0.0:0.9999;
   gl_FragColor=vec4(col,1.);
 }`;
 
