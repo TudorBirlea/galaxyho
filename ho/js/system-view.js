@@ -57,6 +57,7 @@ export function buildSystemView(star) {
       u_stepScale:  { value: 0.08 },
       u_exposure:   { value: 0.85 },
       u_gamma:      { value: 0.9 },
+      u_shadowOnly: { value: false },
     };
   } else if (star.remnantType === 'neutronStar') {
     const nsCfg = CONFIG.remnants.neutronStar;
@@ -106,12 +107,30 @@ export function buildSystemView(star) {
   app.systemStarMesh = new THREE.Mesh(starGeo, new THREE.ShaderMaterial({
     vertexShader: STAR_VERT, fragmentShader: starFragShader,
     uniforms: starUniforms,
-    depthWrite: star.remnantType === 'blackHole',
-    depthTest: star.remnantType === 'blackHole',
+    depthWrite: false,
+    depthTest: false,
   }));
   app.systemStarMesh.frustumCulled = false;
   app.systemStarMesh.renderOrder = -1;
   systemGroup.add(app.systemStarMesh);
+
+  // Black hole shadow pass — draws captured pixels black over everything (renderOrder 10)
+  if (star.remnantType === 'blackHole') {
+    const shadowUniforms = Object.fromEntries(
+      Object.entries(starUniforms).map(([k, v]) => [k, v])
+    );
+    shadowUniforms.u_shadowOnly = { value: true };
+    const shadowMesh = new THREE.Mesh(starGeo, new THREE.ShaderMaterial({
+      vertexShader: STAR_VERT, fragmentShader: BLACK_HOLE_FRAG,
+      uniforms: shadowUniforms,
+      depthWrite: false, depthTest: false,
+      transparent: true,
+    }));
+    shadowMesh.frustumCulled = false;
+    shadowMesh.renderOrder = 10;
+    systemGroup.add(shadowMesh);
+    app.bhShadowUniforms = shadowUniforms;
+  }
 
   // Invisible depth sphere — prevents planets rendering inside/behind star surface.
   // Black holes use gl_FragDepth in shader instead; sphere uses base starRadius.
@@ -175,6 +194,9 @@ export function buildSystemView(star) {
 
   // Planets
   const planets = generatePlanets(star);
+  if (star.remnantType === 'blackHole') {
+    planets.forEach(p => { p.orbitRadius *= 2.5; });
+  }
   const orbitLineMat = new THREE.LineBasicMaterial({ color: 0x334455, transparent: true, opacity: 0.3, depthWrite: false });
 
   for (const p of planets) {
