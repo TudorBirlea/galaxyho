@@ -104,7 +104,7 @@ export function buildSystemView(star) {
     vertexShader: STAR_VERT, fragmentShader: starFragShader,
     uniforms: starUniforms,
     depthWrite: star.remnantType === 'blackHole',
-    depthTest: false,
+    depthTest: star.remnantType === 'blackHole',
   }));
   app.systemStarMesh.frustumCulled = false;
   app.systemStarMesh.renderOrder = -1;

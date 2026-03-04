@@ -1,4 +1,4 @@
-export const VERSION = '7.9';
+export const VERSION = '7.10';
 
 export const CONFIG = {
   ships: [
