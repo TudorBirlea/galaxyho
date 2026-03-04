@@ -1060,13 +1060,21 @@ void main(){
     prevDot=nd; pos=np;
   }
 
-  // Captured = event horizon shadow; draw solid black over everything
-  if(captured){ gl_FragColor=vec4(0.,0.,0.,1.); return; }
+  // Captured: if disk was crossed before the horizon, show the disk (it's in front).
+  // Otherwise draw solid black (pure shadow).
+  if(captured){
+    if(alpha>0.01){
+      col=ACESFilm(col*u_exposure);
+      col=pow(col,vec3(u_gamma));
+      gl_FragColor=vec4(col,1.);
+    } else {
+      gl_FragColor=vec4(0.,0.,0.,1.);
+    }
+    return;
+  }
 
-  vec3 bg=bgStars(normalize(vel));
-  vec3 dx=dFdx(vel),dy=dFdy(vel);
-  bg*=clamp(.0001/(length(cross(dx,dy))+.00005),1.,35.);
-  col+=bg*(1.-alpha);
+  // No disk, not captured — discard so planets and space show through.
+  if(alpha<0.01) discard;
 
   col=ACESFilm(col*u_exposure);
   col=pow(col,vec3(u_gamma));
