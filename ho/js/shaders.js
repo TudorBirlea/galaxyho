@@ -708,13 +708,18 @@ void main(){
   vec2 uv=gl_PointCoord-0.5;
   float d=length(uv);
 
-  float diamond=1.0-smoothstep(0.0,0.02,abs(uv.x)+abs(uv.y)-0.28);
-  float glow=exp(-d*8.0)*0.4;
-  float pulse=0.85+0.15*sin(u_time*2.5);
+  // outer ring
+  float ring=smoothstep(0.20,0.22,d)*smoothstep(0.30,0.26,d);
+  // 4-arm spinning swirl
+  float angle=atan(uv.y,uv.x)-u_time*1.6;
+  float swirl=pow(0.5+0.5*sin(angle*4.0+d*12.0),3.0)*exp(-d*7.0)*0.85;
+  // soft core glow
+  float core=exp(-d*d*55.0)*0.55;
 
-  vec3 col=vec3(0.3,0.9,0.65)*(diamond+glow)*pulse;
-  float alpha=(diamond+glow)*pulse;
-  if(alpha<0.01)discard;
+  float pulse=0.82+0.18*sin(u_time*2.5);
+  vec3 col=vec3(0.2,0.9,0.6)*(ring+swirl+core)*pulse;
+  float alpha=(ring+swirl+core)*pulse;
+  if(alpha<0.008)discard;
   gl_FragColor=vec4(col,min(alpha,1.0));
 }`;
 
