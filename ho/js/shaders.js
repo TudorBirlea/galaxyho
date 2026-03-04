@@ -1109,6 +1109,7 @@ void main(){
   col=ACESFilm(col*u_exposure);
   col*=1.-0.12*dot(vUV*0.5,vUV*0.5);
   col=pow(col,vec3(0.92));
+  gl_FragDepth = hit ? 0.0 : 0.9999;
   gl_FragColor=vec4(col,1.);
 }`;
 
