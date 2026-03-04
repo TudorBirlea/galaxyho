@@ -115,7 +115,8 @@ export function buildSystemView(star) {
   systemGroup.add(app.systemStarMesh);
 
   // Invisible depth sphere — prevents planets rendering inside/behind star surface.
-  const depthRadius = starRadius;
+  // BH apparent shadow is ~2.6× event horizon due to photon sphere lensing; use 3× for safety.
+  const depthRadius = star.remnantType === 'blackHole' ? starRadius * 3 : starRadius;
   const depthSphere = new THREE.Mesh(
     new THREE.SphereGeometry(depthRadius, 32, 32),
     new THREE.MeshBasicMaterial({ colorWrite: false })
