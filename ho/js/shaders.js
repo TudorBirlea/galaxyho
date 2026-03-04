@@ -718,6 +718,40 @@ void main(){
   gl_FragColor=vec4(col,min(alpha,1.0));
 }`;
 
+// ── Wormhole marker ──
+
+export const WORMHOLE_MARKER_VERT = `
+uniform float u_time;
+void main(){
+  vec4 mv=modelViewMatrix*vec4(position,1.0);
+  float pulse=0.92+0.08*sin(u_time*2.2);
+  gl_PointSize=clamp(22.0*pulse*(-1.0/mv.z)*600.0,5.0,56.0);
+  gl_Position=projectionMatrix*mv;
+}`;
+
+export const WORMHOLE_MARKER_FRAG = `
+precision highp float;
+uniform float u_time;
+void main(){
+  vec2 uv=gl_PointCoord-0.5;
+  float d=length(uv);
+
+  // outer ring
+  float ring=smoothstep(0.22,0.24,d)*smoothstep(0.32,0.28,d);
+  // inner swirl — 3 rotating arms
+  float angle=atan(uv.y,uv.x)-u_time*2.2;
+  float swirl=pow(0.5+0.5*sin(angle*3.0+d*14.0),3.0)*exp(-d*7.0)*0.9;
+  // soft core glow
+  float core=exp(-d*d*60.0)*0.6;
+
+  float pulse=0.8+0.2*sin(u_time*2.8);
+  vec3 col=mix(vec3(0.1,0.85,0.95),vec3(0.65,0.1,1.0),smoothstep(0.0,0.3,d));
+  col*=(ring+swirl+core)*pulse;
+  float alpha=(ring+swirl+core)*pulse;
+  if(alpha<0.008)discard;
+  gl_FragColor=vec4(col,min(alpha,1.0));
+}`;
+
 // ── Nebula clouds (unchanged shader, billboarding handled in JS) ──
 
 export const NEBULA_VERT = `

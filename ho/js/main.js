@@ -544,6 +544,7 @@ function animate() {
   } else if (app.galaxyStarsMat) {
     app.galaxyStarsMat.uniforms.u_time.value = t;
     if (app.shipMarkerMat) app.shipMarkerMat.uniforms.u_time.value = t;
+    if (app.wormholeMarkerMat) app.wormholeMarkerMat.uniforms.u_time.value = t;
 
     // Update nebula time + billboarding
     for (const mesh of app.nebulaMeshes) {

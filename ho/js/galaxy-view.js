@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { CONFIG } from './config.js?v=7.0';
 import { GALAXY_STAR_VERT, GALAXY_STAR_FRAG, SHIP_MARKER_VERT, SHIP_MARKER_FRAG,
          NEBULA_VERT, NEBULA_FRAG, DUST_LANE_VERT, DUST_LANE_FRAG,
-         WARP_TRAIL_VERT, WARP_TRAIL_FRAG } from './shaders.js?v=7.0';
+         WARP_TRAIL_VERT, WARP_TRAIL_FRAG,
+         WORMHOLE_MARKER_VERT, WORMHOLE_MARKER_FRAG } from './shaders.js?v=7.0';
 import { galaxyGroup, camera } from './engine.js?v=7.0';
 import { app } from './app.js?v=7.0';
 import { mulberry32 } from './utils.js?v=7.0';
@@ -218,6 +219,22 @@ export function buildGalaxyView(galaxy, state) {
     });
     app.shipMarkerMat = markerMat;
     galaxyGroup.add(new THREE.Points(markerGeo, markerMat));
+  }
+
+  // Wormhole icon marker
+  const wormholeStar = stars.find(s => s.isWormhole);
+  if (wormholeStar) {
+    const wmGeo = new THREE.BufferGeometry();
+    const wmp = new Float32Array([wormholeStar.position.x, wormholeStar.position.y + 0.9, wormholeStar.position.z]);
+    wmGeo.setAttribute('position', new THREE.BufferAttribute(wmp, 3));
+    const wmMat = new THREE.ShaderMaterial({
+      vertexShader: WORMHOLE_MARKER_VERT,
+      fragmentShader: WORMHOLE_MARKER_FRAG,
+      uniforms: { u_time: { value: 0 } },
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    app.wormholeMarkerMat = wmMat;
+    galaxyGroup.add(new THREE.Points(wmGeo, wmMat));
   }
 
   // Connection lines between adjacent stars
