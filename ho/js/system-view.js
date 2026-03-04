@@ -110,16 +110,16 @@ export function buildSystemView(star) {
   app.systemStarMesh.renderOrder = -1;
   systemGroup.add(app.systemStarMesh);
 
-  // Invisible depth sphere — prevents planets rendering inside star
-  // Skipped for black holes: shader handles its own shadow via geodesic tracing
-  if (star.remnantType !== 'blackHole') {
-    const depthSphere = new THREE.Mesh(
-      new THREE.SphereGeometry(starRadius, 32, 32),
-      new THREE.MeshBasicMaterial({ colorWrite: false })
-    );
-    depthSphere.renderOrder = 0;
-    systemGroup.add(depthSphere);
-  }
+  // Invisible depth sphere — prevents planets rendering inside/behind star
+  // For black holes: sized to photon shadow radius (~2.6× event horizon) so
+  // planets orbiting behind the BH are correctly occluded by depth testing.
+  const depthRadius = star.remnantType === 'blackHole' ? starRadius * 2.6 : starRadius;
+  const depthSphere = new THREE.Mesh(
+    new THREE.SphereGeometry(depthRadius, 32, 32),
+    new THREE.MeshBasicMaterial({ colorWrite: false })
+  );
+  depthSphere.renderOrder = 0;
+  systemGroup.add(depthSphere);
 
   // Star glow sprite — additive billboard for ambient scene fill
   if (star.remnantType !== 'blackHole') {

@@ -1004,9 +1004,9 @@ vec4 evalDisk(float r, float angle, vec3 rd){
   float density=pow(max(tNorm,0.01),3.)*u_diskBright*plunge
     *smoothstep(u_diskOuter,u_diskOuter-1.5,r);
 
-  // Spiral noise (single sample)
-  density*=(1.-u_spiralStr)+u_spiralStr*
-    snoise(vec3(angle*2.-r*0.8+u_time*0.12,r*2.,u_time*0.04));
+  // Spiral noise (single sample) — clamped to prevent negative density
+  density*=max((1.-u_spiralStr)+u_spiralStr*
+    snoise(vec3(angle*2.-r*0.8+u_time*0.12,r*2.,u_time*0.04)),0.0);
 
   // Doppler D^3
   vec3 tW=transpose(diskBasis)*vec3(-sin(angle),0.,cos(angle));
