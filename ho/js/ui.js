@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { CONFIG, VERSION } from './config.js?v=6.0';
-import { app } from './app.js?v=6.0';
-import { getMaxFuel, getUpgradeEffects, calculateJumpFuelCost } from './gameplay.js?v=6.0';
-import { getDockedPlanetId, swapShipModel, shipModelCache, shipModelsReady } from './ship.js?v=6.0';
-import { saveState } from './state.js?v=6.0';
+import { CONFIG, VERSION } from './config.js?v=7.0';
+import { app } from './app.js?v=7.0';
+import { getMaxFuel, getUpgradeEffects, calculateJumpFuelCost } from './gameplay.js?v=7.0';
+import { getDockedPlanetId, swapShipModel, shipModelCache, shipModelsReady } from './ship.js?v=7.0';
+import { saveState } from './state.js?v=7.0';
 
 const tooltipEl = document.getElementById('tooltip');
 const ttName = document.getElementById('tt-name');
@@ -60,6 +60,8 @@ export function showTooltip(star, screenX, screenY, distance, isShipHere, isVisi
     ttClass.textContent = 'Neutron Star';
   } else if (star.remnantType === 'whiteDwarf') {
     ttClass.textContent = 'White Dwarf';
+  } else if (star.isWormhole) {
+    ttClass.textContent = 'Wormhole Anomaly';
   } else {
     ttClass.textContent = `Class ${star.spectralClass} · ${sc.tempLabel}`;
   }
@@ -228,6 +230,16 @@ export function updateHUD(galaxy, state) {
     spLocation.textContent = shipStar.name;
   }
   if (hudVersion) hudVersion.textContent = `v${VERSION}`;
+  const hudGalaxy = document.getElementById('hud-galaxy');
+  if (hudGalaxy) {
+    const gen = state.galaxyGeneration || 0;
+    if (gen > 0) {
+      const pal = CONFIG.galaxyPalettes[gen % CONFIG.galaxyPalettes.length];
+      hudGalaxy.textContent = `Galaxy #${gen + 1} — ${pal.name}`;
+    } else {
+      hudGalaxy.textContent = '';
+    }
+  }
   updateFuelGauge(state);
   updateDataDisplay(state);
   spStarsVal.textContent = `${state.visitedStars.size}/${galaxy.stars.length}`;
@@ -285,6 +297,9 @@ export function renderJournal(journal, galaxy) {
         break;
       case 'event':
         icon = e.success ? '✧' : '⚠'; text = `${e.title}: ${e.lore}`;
+        break;
+      case 'galaxy_transit':
+        icon = '✦'; text = `Traversed wormhole — entered ${e.galaxyName} (Galaxy #${e.toGeneration + 1})`;
         break;
     }
     div.innerHTML = `<span class="je-icon">${icon}</span><span class="je-text">${text}</span><span class="je-time">${timeStr}</span>`;
@@ -345,6 +360,29 @@ export function showEventCard(eventInstance, onChoice) {
 export function hideEventCard() {
   eventCard.classList.remove('visible');
   app.eventCardVisible = false;
+}
+
+// ── v7: Wormhole traversal card ──
+const wormholeCard = document.getElementById('wormhole-card');
+
+export function showWormholeCard(onConfirm, onCancel) {
+  wormholeCard.classList.add('visible');
+  app.wormholeCardVisible = true;
+  function handleConfirm() { cleanup(); onConfirm(); }
+  function handleCancel()  { cleanup(); onCancel(); }
+  function cleanup() {
+    wormholeCard.classList.remove('visible');
+    app.wormholeCardVisible = false;
+    document.getElementById('wc-confirm').removeEventListener('click', handleConfirm);
+    document.getElementById('wc-cancel').removeEventListener('click', handleCancel);
+  }
+  document.getElementById('wc-confirm').addEventListener('click', handleConfirm);
+  document.getElementById('wc-cancel').addEventListener('click', handleCancel);
+}
+
+export function hideWormholeCard() {
+  wormholeCard.classList.remove('visible');
+  app.wormholeCardVisible = false;
 }
 
 export function showOutcome(outcome, onDismiss) {
@@ -453,6 +491,11 @@ export function showSystemPanel(star) {
     syspBadge.textContent = 'White Dwarf';
     syspBadge.style.background = 'rgba(60,60,60,0.5)';
     syspBadge.style.color = 'rgba(220,220,240,0.8)';
+    syspTemp.textContent = '';
+  } else if (star.isWormhole) {
+    syspBadge.textContent = 'Wormhole';
+    syspBadge.style.background = 'rgba(60,0,100,0.6)';
+    syspBadge.style.color = 'rgba(180,100,255,0.9)';
     syspTemp.textContent = '';
   } else {
     const sc = CONFIG.spectral[star.spectralClass];

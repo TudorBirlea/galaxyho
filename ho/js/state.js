@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js?v=6.0';
+import { CONFIG } from './config.js?v=7.0';
 
 const SAVE_KEY = 'galaxyho_save';
 
@@ -23,6 +23,9 @@ export function createState(seed) {
     totalJumps: 0,
     selectedShip: 'spaceship',
     shipScale: CONFIG.ship.meshScale,
+    // v7 multi-galaxy
+    galaxyGeneration: 0,
+    galaxyChain: [],
   };
 }
 
@@ -61,6 +64,9 @@ export function loadState() {
     if (!s.selectedShip) s.selectedShip = 'spaceship';
     // v6.13 migration: shipScale
     if (s.shipScale === undefined) s.shipScale = CONFIG.ship.meshScale;
+    // v7 migration: multi-galaxy fields
+    if (s.galaxyGeneration === undefined) s.galaxyGeneration = 0;
+    if (!s.galaxyChain) s.galaxyChain = [];
     // v5.2 migration: planetActions
     if (!s.planetActions) {
       s.planetActions = {};

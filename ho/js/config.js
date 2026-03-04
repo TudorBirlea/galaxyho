@@ -1,4 +1,4 @@
-export const VERSION = '6.17';
+export const VERSION = '7.0';
 
 export const CONFIG = {
   ships: [
@@ -96,6 +96,44 @@ export const CONFIG = {
     size: 1.5,
     color: [0.2, 0.55, 0.45],
     opacity: 0.5,
+  },
+  // ── v7 multi-galaxy palettes (generation % 5) ──
+  galaxyPalettes: [
+    { // 0 — Teal Expanse (default, matches pre-v7 appearance)
+      name: 'Teal Expanse',
+      bgStarColors: [0xaabbee, 0x8899bb, 0x667788],
+      nebulaColors: [[0.35,0.18,0.55],[0.18,0.25,0.50],[0.45,0.22,0.10],[0.12,0.35,0.40]],
+      warpTrailColor: [0.2, 0.55, 0.45],
+    },
+    { // 1 — Azure Deep
+      name: 'Azure Deep',
+      bgStarColors: [0x99ccff, 0x6688cc, 0x334466],
+      nebulaColors: [[0.10,0.22,0.60],[0.05,0.35,0.70],[0.20,0.10,0.50],[0.08,0.45,0.55]],
+      warpTrailColor: [0.2, 0.4, 0.9],
+    },
+    { // 2 — Crimson Void
+      name: 'Crimson Void',
+      bgStarColors: [0xffaaaa, 0xcc6666, 0x884444],
+      nebulaColors: [[0.60,0.10,0.15],[0.50,0.20,0.05],[0.40,0.05,0.25],[0.55,0.18,0.08]],
+      warpTrailColor: [0.9, 0.25, 0.2],
+    },
+    { // 3 — Emerald Reach
+      name: 'Emerald Reach',
+      bgStarColors: [0xaaffcc, 0x66cc88, 0x338855],
+      nebulaColors: [[0.10,0.50,0.25],[0.15,0.40,0.15],[0.05,0.55,0.35],[0.20,0.45,0.10]],
+      warpTrailColor: [0.2, 0.85, 0.4],
+    },
+    { // 4 — Amber Drift
+      name: 'Amber Drift',
+      bgStarColors: [0xffddaa, 0xcc9955, 0x886633],
+      nebulaColors: [[0.55,0.35,0.08],[0.50,0.25,0.05],[0.60,0.40,0.10],[0.45,0.20,0.12]],
+      warpTrailColor: [0.9, 0.6, 0.1],
+    },
+  ],
+  wormhole: {
+    remnantTypeValue: 4.0,
+    spriteSize: 3.2,
+    farFraction: 0.30,
   },
   moons: {
     chances: { gas_giant: 0.8, ocean: 0.2, terran: 0.25, water: 0.15, ice: 0.1, desert: 0.05, lava: 0.0 },

@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { CONFIG } from './config.js?v=6.0';
-import { app } from './app.js?v=6.0';
-import { controls, systemGroup } from './engine.js?v=6.0';
-import { getUpgradeEffects } from './gameplay.js?v=6.0';
+import { CONFIG } from './config.js?v=7.0';
+import { app } from './app.js?v=7.0';
+import { controls, systemGroup } from './engine.js?v=7.0';
+import { getUpgradeEffects } from './gameplay.js?v=7.0';
 
 const _lookAt = new THREE.Vector3();
 const _origin = new THREE.Vector3();

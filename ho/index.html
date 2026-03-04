@@ -301,6 +301,37 @@ body.ui-hidden #fullscreen-btn,body.ui-hidden #tune-panel{
   cursor:pointer;padding:6px 12px;letter-spacing:1.5px;text-transform:uppercase;font-family:inherit;
   backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);transition:all 0.2s}
 #fullscreen-btn:hover{color:rgba(255,255,255,0.5);border-color:rgba(255,255,255,0.15)}
+
+/* ── v7 Wormhole Card ── */
+#wormhole-card{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.96);
+  width:92%;max-width:420px;padding:34px 30px 28px;
+  background:rgba(20,8,30,0.92);border:1px solid rgba(140,60,220,0.25);border-radius:16px;
+  backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
+  color:rgba(255,255,255,0.7);z-index:51;opacity:0;pointer-events:none;
+  transition:opacity 0.35s,transform 0.35s cubic-bezier(0.16,1,0.3,1);
+  box-shadow:0 12px 60px rgba(80,0,160,0.35),0 0 40px rgba(60,0,120,0.2);text-align:center}
+#wormhole-card.visible{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+#wc-icon{font-size:32px;margin-bottom:12px;display:inline-block;animation:wc-spin 5s linear infinite;
+  color:rgba(140,100,255,0.8)}
+@keyframes wc-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+#wc-title{font-size:15px;font-weight:600;color:rgba(180,100,255,0.95);
+  letter-spacing:2px;text-transform:uppercase;margin-bottom:12px}
+#wc-desc{font-size:13px;color:rgba(255,255,255,0.5);line-height:1.75;margin-bottom:18px;letter-spacing:0.3px}
+#wc-warning{font-size:11px;color:rgba(220,160,60,0.65);letter-spacing:0.5px;margin-bottom:22px;
+  padding:8px 12px;background:rgba(220,160,60,0.05);border:1px solid rgba(220,160,60,0.1);border-radius:6px}
+#wc-confirm{display:block;width:100%;padding:14px;background:rgba(120,40,200,0.15);
+  border:1px solid rgba(140,60,220,0.3);border-radius:10px;color:rgba(180,120,255,0.85);
+  font-size:12px;cursor:pointer;letter-spacing:2px;text-transform:uppercase;font-family:inherit;
+  transition:all 0.2s;margin-bottom:8px}
+#wc-confirm:hover{background:rgba(140,60,220,0.28);color:rgba(210,170,255,1)}
+#wc-cancel{display:block;width:100%;padding:11px;background:transparent;
+  border:1px solid rgba(255,255,255,0.06);border-radius:10px;color:rgba(255,255,255,0.3);
+  font-size:11px;cursor:pointer;letter-spacing:1.5px;text-transform:uppercase;
+  font-family:inherit;transition:all 0.2s}
+#wc-cancel:hover{color:rgba(255,255,255,0.55)}
+/* ── v7 Galaxy label in HUD ── */
+#hud-galaxy{font-size:9px;color:rgba(180,100,255,0.45);letter-spacing:2px;
+  text-transform:uppercase;margin-top:2px}
 </style>
 </head>
 <body>
@@ -309,6 +340,7 @@ body.ui-hidden #fullscreen-btn,body.ui-hidden #tune-panel{
   <div>
     <div id="hud-location">Galaxy View</div>
     <div id="hud-ship"></div>
+    <div id="hud-galaxy"></div>
   </div>
   <div style="text-align:right">
     <span id="hud-progress" style="font-size:11px">0/100 explored</span>
@@ -464,6 +496,16 @@ body.ui-hidden #fullscreen-btn,body.ui-hidden #tune-panel{
   <div id="oc-lore"></div>
 </div>
 
+<!-- v7: Wormhole traversal card -->
+<div id="wormhole-card">
+  <div id="wc-icon">&#x2605;</div>
+  <div id="wc-title">Wormhole Detected</div>
+  <div id="wc-desc">An unstable spatial anomaly tears through the fabric of space. Traversal will carry you to an uncharted galaxy far beyond known space.</div>
+  <div id="wc-warning">&#x26A0; One-way transit &mdash; you cannot return to this galaxy. Fuel, data, and upgrades will carry over.</div>
+  <button id="wc-confirm">Enter the Wormhole &rarr;</button>
+  <button id="wc-cancel">Turn Back</button>
+</div>
+
 <div id="upgrade-panel">
   <div id="upgrade-header">
     <span>Ship Upgrades</span>
@@ -500,6 +542,6 @@ body.ui-hidden #fullscreen-btn,body.ui-hidden #tune-panel{
   });
 })();
 </script>
-<script type="module" src="js/main.js?v=6.0"></script>
+<script type="module" src="js/main.js?v=7.0"></script>
 </body>
 </html>

@@ -1,11 +1,16 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js?v=6.0';
+import { CONFIG } from './config.js?v=7.0';
 import { GALAXY_STAR_VERT, GALAXY_STAR_FRAG, SHIP_MARKER_VERT, SHIP_MARKER_FRAG,
          NEBULA_VERT, NEBULA_FRAG, DUST_LANE_VERT, DUST_LANE_FRAG,
-         WARP_TRAIL_VERT, WARP_TRAIL_FRAG } from './shaders.js?v=6.0';
-import { galaxyGroup, camera } from './engine.js?v=6.0';
-import { app } from './app.js?v=6.0';
-import { mulberry32 } from './utils.js?v=6.0';
+         WARP_TRAIL_VERT, WARP_TRAIL_FRAG } from './shaders.js?v=7.0';
+import { galaxyGroup, camera } from './engine.js?v=7.0';
+import { app } from './app.js?v=7.0';
+import { mulberry32 } from './utils.js?v=7.0';
+
+function getPaletteForState(state) {
+  const gen = (state && state.galaxyGeneration) || 0;
+  return CONFIG.galaxyPalettes[gen % CONFIG.galaxyPalettes.length];
+}
 
 export function buildGalaxyView(galaxy, state) {
   // Clear previous
@@ -16,13 +21,15 @@ export function buildGalaxyView(galaxy, state) {
   app.dustLaneMeshes = [];
   app.warpTrailEntries = [];
 
+  const palette = getPaletteForState(state);
+
   // ── v2: Multi-layer background starfield with parallax ──
   app.camOrigin = camera.position.clone();
-  for (const layer of CONFIG.bgStarLayers) {
+  CONFIG.bgStarLayers.forEach((layer, layerIdx) => {
     const positions = new Float32Array(layer.count * 3);
     const colors = new Float32Array(layer.count * 3);
     const sizes = new Float32Array(layer.count);
-    const c = new THREE.Color(layer.color);
+    const c = new THREE.Color(palette.bgStarColors[layerIdx] !== undefined ? palette.bgStarColors[layerIdx] : layer.color);
     for (let i = 0; i < layer.count; i++) {
       const th = Math.random() * Math.PI * 2;
       const ph = Math.acos(2 * Math.random() - 1);
@@ -49,15 +56,10 @@ export function buildGalaxyView(galaxy, state) {
     const points = new THREE.Points(geo, mat);
     galaxyGroup.add(points);
     app.bgStarLayers.push({ points, drift: layer.drift });
-  }
+  });
 
   // ── v2: Multi-layer volumetric nebulae ──
-  const nebulaColors = [
-    new THREE.Color(0.35, 0.18, 0.55),
-    new THREE.Color(0.18, 0.25, 0.50),
-    new THREE.Color(0.45, 0.22, 0.10),
-    new THREE.Color(0.12, 0.35, 0.40),
-  ];
+  const nebulaColors = palette.nebulaColors.map(c => new THREE.Color(c[0], c[1], c[2]));
   const nebulaRng = mulberry32(galaxy.seed + 777);
   const nebulaCount = CONFIG.nebulaCount;
   const layerCount = CONFIG.nebulaLayers;
@@ -152,9 +154,12 @@ export function buildGalaxyView(galaxy, state) {
     const visited = state.visitedStars.has(star.id);
     const sc = CONFIG.spectral[star.spectralClass];
 
-    // v3: Remnant-specific color and size overrides
+    // v3/v7: Remnant-specific and wormhole color/size overrides
     let col;
-    if (star.remnantType === 'blackHole') {
+    if (star.isWormhole) {
+      col = new THREE.Color(0.4, 0.0, 0.8);
+      aSz[i] = CONFIG.wormhole.spriteSize * (reachable ? 1.0 : 0.35);
+    } else if (star.remnantType === 'blackHole') {
       col = new THREE.Color(CONFIG.remnants.blackHole.color);
       aSz[i] = CONFIG.remnants.blackHole.spriteSize * (reachable ? 1.0 : 0.35);
     } else if (star.remnantType === 'neutronStar') {
@@ -174,8 +179,12 @@ export function buildGalaxyView(galaxy, state) {
     aBr[i] = reachable ? (visited ? 0.75 : 1.0) : 0.12;
     aVs[i] = visited ? 1.0 : 0.0;
     aPulse[i] = star.pulseRate || 0;
-    // v3: Remnant type encoding: 0=normal, 1=blackHole, 2=neutronStar, 3=whiteDwarf
-    aRemnant[i] = star.remnantType === 'blackHole' ? 1.0 : star.remnantType === 'neutronStar' ? 2.0 : star.remnantType === 'whiteDwarf' ? 3.0 : 0.0;
+    // v3/v7: Remnant type encoding: 0=normal, 1=blackHole, 2=neutronStar, 3=whiteDwarf, 4=wormhole
+    aRemnant[i] = star.isWormhole ? CONFIG.wormhole.remnantTypeValue
+                : star.remnantType === 'blackHole' ? 1.0
+                : star.remnantType === 'neutronStar' ? 2.0
+                : star.remnantType === 'whiteDwarf' ? 3.0
+                : 0.0;
     app.starSprites.push({ star });
   }
   const sGeo = new THREE.BufferGeometry();
@@ -249,7 +258,7 @@ export function buildGalaxyView(galaxy, state) {
             u_speed: { value: trailCfg.speed },
             u_from: { value: from.clone() },
             u_to: { value: to.clone() },
-            u_color: { value: new THREE.Vector3(trailCfg.color[0], trailCfg.color[1], trailCfg.color[2]) },
+            u_color: { value: new THREE.Vector3(...palette.warpTrailColor) },
           },
           transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
         });

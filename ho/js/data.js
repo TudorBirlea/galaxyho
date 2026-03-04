@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=6.0';
-import { mulberry32, hashInt, lerp, genStarName, pickSpectralClass, ROMAN, SPECIALS } from './utils.js?v=6.0';
+import { CONFIG } from './config.js?v=7.0';
+import { mulberry32, hashInt, lerp, genStarName, pickSpectralClass, ROMAN, SPECIALS } from './utils.js?v=7.0';
 
 export function generateGalaxy(seed) {
   const rng = mulberry32(seed);
@@ -154,7 +154,30 @@ export function generateGalaxy(seed) {
     s.hasComets = comets.length > 0;
   }
 
+  // ── v7: Place wormhole ──
+  placeWormhole(stars, seed);
+
   return { seed, stars };
+}
+
+// ── v7: Place one wormhole star per galaxy, far from home ──
+export function placeWormhole(stars, seed) {
+  const withDist = stars.map(s => ({
+    s,
+    d: Math.sqrt(s.position.x ** 2 + s.position.y ** 2 + s.position.z ** 2),
+  }));
+  withDist.sort((a, b) => b.d - a.d);
+
+  // Top farFraction% farthest stars, excluding home (id 0) and remnants
+  const eligible = withDist
+    .filter(w => w.s.id !== 0 && !w.s.remnantType)
+    .slice(0, Math.max(1, Math.ceil(withDist.length * CONFIG.wormhole.farFraction)));
+
+  if (eligible.length === 0) return;
+
+  const wRng = mulberry32(seed + 12345);
+  const chosen = eligible[Math.floor(wRng() * eligible.length)];
+  chosen.s.isWormhole = true;
 }
 
 export function starDistance(a, b) {

@@ -629,6 +629,25 @@ void main(){
     return;
   }
 
+  // v7: Wormhole — animated cyan/violet spiral vortex
+  if(vRemnantType>3.5&&vRemnantType<4.5){
+    vec2 uv2=gl_PointCoord-0.5;
+    float d2=length(uv2);
+    float angle=atan(uv2.y,uv2.x);
+    float spiralPhase=angle-vTime*1.8+d2*12.0;
+    float spiral=pow(0.5+0.5*sin(spiralPhase*2.5),2.0);
+    float wcore=exp(-d2*d2*50.0);
+    float vortex=spiral*exp(-d2*6.0)*0.8;
+    float whalo=exp(-d2*3.5)*0.35;
+    vec3 wcol=mix(vec3(0.1,0.85,0.9),vec3(0.6,0.1,1.0),smoothstep(0.0,0.25,d2));
+    wcol*=(wcore+vortex+whalo)*vBright*1.4*(0.85+0.15*sin(vTime*2.2));
+    if(vVisited>0.5){float wring=smoothstep(0.18,0.22,d2)*smoothstep(0.34,0.26,d2);wcol+=vec3(0.2,0.8,0.55)*wring*0.9;}
+    float wtotal=wcore+vortex+whalo;
+    if(wtotal<0.005)discard;
+    gl_FragColor=vec4(wcol,min(wtotal,1.0));
+    return;
+  }
+
   float core=exp(-d*d*60.0);
 
   float sH=exp(-abs(uv.y)*30.0)*exp(-abs(uv.x)*4.5);

@@ -1,6 +1,6 @@
-import { CONFIG } from './config.js?v=6.0';
-import { starDistance } from './data.js?v=6.0';
-import { mulberry32, hashInt, lerp } from './utils.js?v=6.0';
+import { CONFIG } from './config.js?v=7.0';
+import { starDistance } from './data.js?v=7.0';
+import { mulberry32, hashInt, lerp } from './utils.js?v=7.0';
 
 export function getUpgradeEffects(state) {
   const e = {

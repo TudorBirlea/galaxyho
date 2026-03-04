@@ -1,25 +1,26 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js?v=6.0';
-import { generateGalaxy, generatePlanets, starDistance } from './data.js?v=6.0';
+import { CONFIG } from './config.js?v=7.0';
+import { generateGalaxy, generatePlanets, starDistance, placeWormhole } from './data.js?v=7.0';
 import { camera, controls, composer, clock, galaxyGroup, systemGroup, bloomPass,
-         bloomTintPass, grainPass } from './engine.js?v=6.0';
-import { createState, saveState, loadState } from './state.js?v=6.0';
-import { app } from './app.js?v=6.0';
-import { easeInOutCubic } from './utils.js?v=6.0';
+         bloomTintPass, grainPass } from './engine.js?v=7.0';
+import { createState, saveState, loadState } from './state.js?v=7.0';
+import { app } from './app.js?v=7.0';
+import { easeInOutCubic } from './utils.js?v=7.0';
 import { hideTooltip, hideInfoCard, updateHUD, hudLocation, backBtn, overlay,
          renderJournal, showJournalNotice, updateFuelGauge, updateDataDisplay,
          flashData, showLockMessage, showEventCard, hideEventCard, showOutcome,
          showUpgradePanel, hideUpgradePanel, upgradeBtn, upgradeClose,
-         showSystemPanel, hideSystemPanel, updateSystemPanel } from './ui.js?v=6.0';
-import { buildGalaxyView } from './galaxy-view.js?v=6.0';
-import { buildSystemView, clearSystemView, updateSystemView } from './system-view.js?v=6.0';
-import { setupInput } from './input.js?v=6.0';
-import { drawMinimap } from './minimap.js?v=6.0';
+         showSystemPanel, hideSystemPanel, updateSystemPanel,
+         showWormholeCard, hideWormholeCard } from './ui.js?v=7.0';
+import { buildGalaxyView } from './galaxy-view.js?v=7.0';
+import { buildSystemView, clearSystemView, updateSystemView } from './system-view.js?v=7.0';
+import { setupInput } from './input.js?v=7.0';
+import { drawMinimap } from './minimap.js?v=7.0';
 import { calculateJumpFuelCost, canJump, consumeFuel, addFuel, addData,
          rollPlanetFuel, rollScanData, rollMiningYield, rollExploreData,
-         updateSolarRegen, getUpgradeEffects } from './gameplay.js?v=6.0';
-import { updateShip } from './ship.js?v=6.0';
-import { generatePlanetEvent, resolveChoice } from './events.js?v=6.0';
+         updateSolarRegen, getUpgradeEffects } from './gameplay.js?v=7.0';
+import { updateShip } from './ship.js?v=7.0';
+import { generatePlanetEvent, resolveChoice } from './events.js?v=7.0';
 
 // ── Transition state ──
 let transAnim = null;
@@ -205,6 +206,28 @@ function jumpToStar(star) {
     return;
   }
 
+  // v7: Wormhole interception — show confirmation card
+  if (star.isWormhole) {
+    showWormholeCard(
+      () => { // confirm
+        if (!isEmergencyJump) consumeFuel(fuelCost, app.state);
+        app.state.totalJumps++;
+        updateFuelGauge(app.state);
+        addJournal({ type: 'jump', fromStarId: app.state.shipStarId, toStarId: star.id,
+                     distance: Math.round(dist * 10) / 10, fuelCost });
+        app.state.shipStarId = star.id;
+        app.state.shipPlanetId = null;
+        saveState(app.state);
+        app.transitioning = true;
+        overlay.style.transition = 'opacity 0.4s';
+        overlay.style.opacity = '1';
+        setTimeout(() => traverseWormhole(), 500);
+      },
+      () => {} // cancel
+    );
+    return;
+  }
+
   // v5: Consume fuel (0 for emergency)
   if (!isEmergencyJump) consumeFuel(fuelCost, app.state);
   app.state.totalJumps++;
@@ -346,6 +369,100 @@ function exitSystem() {
   }, 350);
 }
 
+// ── v7: Multi-galaxy helpers ──
+
+function getPalette(gen) {
+  return CONFIG.galaxyPalettes[gen % CONFIG.galaxyPalettes.length];
+}
+
+function traverseWormhole() {
+  const gen = app.state.galaxyGeneration;
+  const pal = getPalette(gen);
+
+  // Archive current galaxy to chain
+  app.state.galaxyChain.push({
+    generation: gen,
+    seed: app.state.galaxySeed,
+    name: pal.name,
+    starsVisited: app.state.visitedStars.size,
+  });
+
+  // Next seed — deterministic from current seed + generation
+  const nextSeed = ((app.state.galaxySeed * 1664525 + gen * 6364136 + 1013904223) >>> 0);
+
+  // Reset per-galaxy state; preserve fuel, data, upgrades, journal, ship
+  app.state.galaxySeed = nextSeed;
+  app.state.galaxyGeneration = gen + 1;
+  app.state.visitedStars = new Set();
+  app.state.reachableStars = new Set([0]);
+  app.state.shipStarId = 0;
+  app.state.shipPlanetId = null;
+  app.state.planetActions = {};
+  app.state.scannedPlanets = new Set();
+  app.state.resolvedEvents = {};
+  app.state.totalScans = 0;
+  app.state.totalJumps = 0;
+
+  // Generate new galaxy (wormhole auto-placed inside generateGalaxy)
+  app.galaxy = generateGalaxy(nextSeed);
+  const star0 = app.galaxy.stars[0];
+  app.state.visitedStars.add(0);
+  star0.visited = true;
+  for (const adjId of star0.adjacentIds) {
+    app.state.reachableStars.add(adjId);
+  }
+
+  const newPal = getPalette(app.state.galaxyGeneration);
+  addJournal({
+    type: 'galaxy_transit',
+    fromGeneration: gen,
+    toGeneration: app.state.galaxyGeneration,
+    galaxyName: newPal.name,
+  });
+
+  saveState(app.state);
+
+  // Fade out → swap view → fade in
+  overlay.style.transition = 'opacity 0.6s';
+  overlay.style.opacity = '1';
+
+  setTimeout(() => {
+    clearSystemView();
+    systemGroup.visible = false;
+    galaxyGroup.visible = true;
+    buildGalaxyView(app.galaxy, app.state);
+    updateHUD(app.galaxy, app.state);
+    hudLocation.textContent = 'Galaxy View';
+
+    const gc = CONFIG.camera.galaxy;
+    camera.fov = gc.fov; camera.near = gc.near; camera.far = gc.far;
+    camera.updateProjectionMatrix();
+    controls.minDistance = gc.minDist; controls.maxDistance = gc.maxDist;
+    camera.position.set(...gc.pos);
+    controls.target.set(...gc.target);
+    controls.update();
+
+    backBtn.style.display = 'none';
+    document.getElementById('tune-panel').style.display = 'none';
+
+    bloomPass.threshold = CONFIG.bloom.threshold;
+    bloomPass.strength = CONFIG.bloom.strength;
+    bloomTintPass.uniforms.u_enabled.value = 1.0;
+
+    drawMinimap(app.galaxy, app.state, null);
+    updateFuelGauge(app.state);
+    updateDataDisplay(app.state);
+
+    app.transitioning = false;
+    app.selectedStar = null;
+
+    setTimeout(() => {
+      overlay.style.transition = 'opacity 0.8s';
+      overlay.style.opacity = '0';
+    }, 100);
+  }, 700);
+}
+
 // ── Animation loop ──
 let lastTime = 0;
 
@@ -461,7 +578,7 @@ function animate() {
 // ── v5: Upgrade panel wiring ──
 function setupUpgradeButton() {
   // Lazy-import to avoid circular deps — upgrade tree is static data
-  import('./upgrades.js?v=6.0').then(({ UPGRADE_TREE, purchaseUpgrade }) => {
+  import('./upgrades.js?v=7.0').then(({ UPGRADE_TREE, purchaseUpgrade }) => {
     upgradeBtn.addEventListener('click', () => {
       showUpgradePanel(app.state, UPGRADE_TREE, (catId, tier) => {
         if (purchaseUpgrade(catId, tier, app.state)) {
