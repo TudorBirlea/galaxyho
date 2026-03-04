@@ -3,8 +3,18 @@ import { CONFIG, VERSION } from './config.js?v=7.0';
 import { app } from './app.js?v=7.0';
 import { getMaxFuel, getUpgradeEffects, calculateJumpFuelCost } from './gameplay.js?v=7.0';
 import { getDockedPlanetId, swapShipModel, shipModelCache, shipModelsReady } from './ship.js?v=7.0';
-import { capturePlanetSnapshot } from './system-view.js?v=7.0';
 import { saveState } from './state.js?v=7.0';
+
+// Snapshot cache — populated by input.js after each planet click
+const _snapCache = new Map(); // planetId → dataURL
+export function cachePlanetSnapshot(planetId, dataURL) {
+  _snapCache.set(planetId, dataURL);
+  // Update system panel thumbnail live if the panel is open
+  if (syspPlanetList) {
+    const img = syspPlanetList.querySelector(`img[data-pid="${planetId}"]`);
+    if (img) img.src = dataURL;
+  }
+}
 
 const tooltipEl = document.getElementById('tooltip');
 const ttName = document.getElementById('tt-name');
@@ -521,14 +531,14 @@ export function showSystemPanel(star) {
     const p = pe.data;
     const key = `${star.id}-${p.id}`;
     const actions = app.state.planetActions[key] || {};
-    const snap = capturePlanetSnapshot(pe);
+    const snap = _snapCache.get(p.id) || '';
     const col = PTYPE_COL[p.type] || '#888';
     const label = p.type.replace('_', ' ');
     const item = document.createElement('div');
     item.className = 'sysp-pitem';
     item.dataset.planetKey = key;
     item.innerHTML = `
-      <img class="sysp-pthumb" src="${snap}">
+      <img class="sysp-pthumb" data-pid="${p.id}" src="${snap}">
       <div class="sysp-pinfo">
         <div class="sysp-pname">${p.name}</div>
         <span class="sysp-ptype" style="background:${col}22;color:${col}">${label}</span>
@@ -549,6 +559,7 @@ export function showSystemPanel(star) {
 export function hideSystemPanel() {
   systemPanel.style.display = 'none';
   _currentSysStar = null;
+  _snapCache.clear();
 }
 
 export function updateSystemPanel() {

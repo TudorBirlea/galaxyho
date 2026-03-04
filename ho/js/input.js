@@ -3,7 +3,7 @@ import { renderer, camera } from './engine.js?v=7.0';
 import { app } from './app.js?v=7.0';
 import { showTooltip, hideTooltip, showInfoCard, hideInfoCard, showLockMessage,
          hudLocation, ttEnter, ttJump, backBtn, icClose, journalBtn, journalClose,
-         toggleJournal, renderJournal } from './ui.js?v=7.0';
+         toggleJournal, renderJournal, cachePlanetSnapshot } from './ui.js?v=7.0';
 import { starDistance } from './data.js?v=7.0';
 import { drawMinimap } from './minimap.js?v=7.0';
 import { capturePlanetSnapshot } from './system-view.js?v=7.0';
@@ -87,6 +87,7 @@ function handleTap(e) {
           flyShipToPlanet(entry, (arrivedEntry) => {
             // Refresh info card now that ship is docked
             const snapshot = capturePlanetSnapshot(arrivedEntry);
+            cachePlanetSnapshot(arrivedEntry.data.id, snapshot);
             showInfoCard(arrivedEntry.data, snapshot);
           });
         }
@@ -94,6 +95,7 @@ function handleTap(e) {
         // First click → show info card
         app.selectedPlanetId = planet.id;
         const snapshot = capturePlanetSnapshot(entry);
+        cachePlanetSnapshot(entry.data.id, snapshot);
         showInfoCard(entry.data, snapshot);
       }
     } else {
