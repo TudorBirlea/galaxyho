@@ -954,31 +954,33 @@ void main(){
   gl_FragColor = vec4(u_color * (1.0 + (1.0 - d) * 0.3), alpha);
 }`;
 
-// ── v7.11: Black hole — simple acceleration lensing + analytic disk + front-to-back compositing ──
+// ── v7.12: Black hole — lab-proven shader ─────────────────────────────────
 
 export const BLACK_HOLE_FRAG = `precision highp float;
 varying vec2 vUV;
 uniform float u_time;
 uniform float u_starRadius;
-uniform mat4 u_invViewProj;
+uniform mat4  u_invViewProj;
 uniform float u_diskTilt;
 uniform float u_diskOuter;
 uniform float u_diskBright;
 uniform float u_dopplerStr;
+uniform float u_innerFade;
+uniform float u_bendStr;
+uniform float u_stepScale;
 uniform float u_exposure;
+uniform float u_gamma;
 
-vec3 ACESFilm(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.,1.);}
+vec3 ACESFilm(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.,1.); }
 
-// Blackbody: t=0 → deep red, t=0.5 → orange-white, t=1 → blue-white
 vec3 blackbody(float t){
   t=clamp(t,0.,1.);
-  vec3 lo=mix(vec3(0.9,0.1,0.01),vec3(1.0,0.55,0.1),smoothstep(0.,0.35,t));
-  vec3 mi=mix(vec3(1.0,0.55,0.1),vec3(1.0,0.92,0.65),smoothstep(0.35,0.65,t));
-  vec3 hi=mix(vec3(1.0,0.92,0.65),vec3(0.7,0.85,1.0),smoothstep(0.65,1.,t));
-  return t<0.35?lo:t<0.65?mi:hi;
+  vec3 lo=mix(vec3(0.95,0.08,0.01),vec3(1.0,0.55,0.08),smoothstep(0.,.35,t));
+  vec3 mi=mix(vec3(1.0,0.55,0.08), vec3(1.0,0.93,0.62),smoothstep(.35,.65,t));
+  vec3 hi=mix(vec3(1.0,0.93,0.62), vec3(0.68,0.82,1.0),smoothstep(.65,1.,t));
+  return t<.35?lo:t<.65?mi:hi;
 }
 
-// Procedural star field (spherical direction rd)
 vec3 bgStars(vec3 rd){
   vec3 col=vec3(0.);
   float theta=acos(clamp(rd.y,-1.,1.));
@@ -989,7 +991,7 @@ vec3 bgStars(vec3 rd){
     vec2 ci=floor(vec2(phi*dn,theta*dn));
     vec2 cu=fract(vec2(phi*dn,theta*dn))-.5;
     float h=fract(sin(dot(ci+fl*50.,vec2(127.1,311.7)))*43758.5453);
-    if(h>0.965){
+    if(h>.965){
       vec2 of=vec2(fract(sin(dot(ci+fl*50.,vec2(269.5,183.3)))*43758.5453),
                    fract(sin(dot(ci+fl*50.,vec2(419.2,371.9)))*43758.5453))-.5;
       float d=length(cu-of*.6);
@@ -1002,94 +1004,69 @@ vec3 bgStars(vec3 rd){
   return col;
 }
 
-// Accretion disk: r in Schwarzschild units, sinPhi = Doppler component
 vec4 evalDisk(float r, float angle, float sinPhi){
   if(r<2.||r>u_diskOuter) return vec4(0.);
-
-  // Power-law temperature: inner edge hottest
   float tNorm=pow(2./max(r,2.),.75);
-
-  // Layered texture: Keplerian rings + azimuthal arcs
-  float w=.4/sqrt(max(r,2.));          // angular velocity ∝ r^{-3/2}
-  float r1=.5+.5*sin(r*3.2-u_time*w);
-  float r2=.5+.5*sin(r*7.5-u_time*w*2.3+1.4);
-  float ar=.5+.5*sin(angle*5.+r*1.1+u_time*.1);
-  float tex=r1*.4+r2*.2+ar*.4;
-
+  float w=.4/sqrt(max(r,2.));
+  float ring1=.5+.5*sin(r*3.1 -u_time*w);
+  float ring2=.5+.5*sin(r*7.8 -u_time*w*2.4+1.3);
+  float ring3=.5+.5*sin(r*14. -u_time*w*4.1+2.7);
+  float arc  =.5+.5*sin(angle*5.+r*1.2+u_time*.1);
+  float tex  =ring1*.35+ring2*.20+ring3*.15+arc*.30;
   float density=tNorm*tex*u_diskBright;
-  density*=smoothstep(2.,4.5,r);                        // inner fade (ISCO~3rs)
-  density*=smoothstep(u_diskOuter,u_diskOuter*.65,r);   // outer fade
-
-  // Relativistic Doppler beaming D^3
-  float beta=clamp(1./sqrt(max(r,2.)),.0,.7);           // Keplerian v/c
-  float D=clamp(1./max(1.-sinPhi*beta*u_dopplerStr,.2),.15,5.);
+  density*=smoothstep(2.,u_innerFade,r);
+  density*=smoothstep(u_diskOuter,u_diskOuter*.6,r);
+  float beta=clamp(1./sqrt(max(r,2.)),0.,.72);
+  float D=clamp(1./max(1.-sinPhi*beta*u_dopplerStr,.18),.15,6.);
   density*=D*D*D;
-
-  // Doppler-shifted blackbody color (inner=hot/blue, outer=cool/red)
-  float colorT=clamp(tNorm*D*.8,0.,1.);
-  vec3 col=blackbody(colorT)*density;
-  return vec4(col, clamp(density*.5,0.,.9));
+  float colorT=clamp(tNorm*D*.75,0.,1.);
+  return vec4(blackbody(colorT)*density, clamp(density*.45,0.,.92));
 }
 
 void main(){
-  // Reconstruct world-space ray
   vec4 fc=u_invViewProj*vec4(vUV,1.,1.); fc/=fc.w;
   vec3 vel=normalize(fc.xyz-cameraPosition);
   vec3 pos=cameraPosition/u_starRadius;
-
-  // Tilted disk plane normal
-  vec3 diskN=normalize(vec3(0.,cos(u_diskTilt),sin(u_diskTilt)));
-
+  vec3 diskN=vec3(0.,cos(u_diskTilt),sin(u_diskTilt));
   vec3 col=vec3(0.);
-  float alpha=0.;      // front-to-back compositor
+  float alpha=0.;
   bool captured=false;
   float prevDot=dot(pos,diskN);
 
-  for(int i=0;i<80;i++){
+  for(int i=0;i<100;i++){
     float r=length(pos);
     if(r<1.){captured=true;break;}
     if(r>80.&&i>4) break;
-
-    // Adaptive step: tight near horizon, coarse far out
-    float dt=clamp(.08*(r-1.),.015,.5);
-
-    // Gravitational bending: a = -1.5/r³ · pos  (gives photon sphere at r=1.5)
-    vel=normalize(vel-(1.5/(r*r*r))*pos*dt);
-
+    float dt=clamp(u_stepScale*(r-1.),.008,.6);
+    vel=normalize(vel-(u_bendStr/(r*r*r))*pos*dt);
     vec3 np=pos+vel*dt;
     float nd=dot(np,diskN);
-
-    // Analytic disk crossing — front-to-back composite
     if(prevDot*nd<0.&&alpha<.97){
       float t=prevDot/(prevDot-nd);
       vec3 cp=mix(pos,np,t);
       float cr=length(cp);
       if(cr>=2.&&cr<=u_diskOuter+.5){
-        // Keplerian tangent for Doppler
         vec3 inPlane=normalize(cp-dot(cp,diskN)*diskN);
         float sinPhi=dot(normalize(cross(diskN,inPlane)),vel);
         vec4 disk=evalDisk(cr,atan(cp.z,cp.x),sinPhi);
-        if(disk.a>.005){
+        if(disk.a>.004){
           float w=disk.a*(1.-alpha);
-          col+=disk.rgb*w;
-          alpha+=w;
+          col+=disk.rgb*w; alpha+=w;
         }
       }
     }
-    prevDot=nd;
-    pos=np;
+    prevDot=nd; pos=np;
   }
 
-  // Background: lensed star field + Einstein ring amplification
   if(!captured){
     vec3 bg=bgStars(normalize(vel));
     vec3 dx=dFdx(vel),dy=dFdy(vel);
-    float amp=clamp(.0001/(length(cross(dx,dy))+.00005),1.,30.);
-    col+=bg*amp*(1.-alpha);
+    bg*=clamp(.0001/(length(cross(dx,dy))+.00005),1.,35.);
+    col+=bg*(1.-alpha);
   }
 
   col=ACESFilm(col*u_exposure);
-  col=pow(col,vec3(.9));
+  col=pow(col,vec3(u_gamma));
   gl_FragDepth=captured?0.0:0.9999;
   gl_FragColor=vec4(col,1.);
 }`;
