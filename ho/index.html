@@ -191,19 +191,37 @@ body.ui-hidden #fullscreen-btn,body.ui-hidden #tune-panel{
 #sp-divider{height:1px;background:rgba(255,255,255,0.04);margin:8px 0}
 
 /* ── System Summary Panel ── */
-#system-panel{position:fixed;top:20px;right:20px;width:180px;
-  background:rgba(10,12,20,0.68);border:1px solid rgba(255,255,255,0.06);border-radius:12px;
+#system-panel{position:fixed;top:20px;right:20px;width:250px;max-height:82vh;overflow-y:auto;
+  background:rgba(10,12,20,0.72);border:1px solid rgba(255,255,255,0.07);border-radius:12px;
   backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);z-index:25;padding:14px 14px 12px;
-  box-shadow:0 4px 20px rgba(0,0,0,0.3);display:none}
-#sysp-name{font-size:13px;color:rgba(255,255,255,0.75);letter-spacing:0.5px;margin-bottom:2px}
+  box-shadow:0 4px 24px rgba(0,0,0,0.4);display:none}
+#system-panel::-webkit-scrollbar{width:3px}
+#system-panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+#sysp-name{font-size:13px;color:rgba(255,255,255,0.78);letter-spacing:0.5px;margin-bottom:2px}
 #sysp-class-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}
 .sysp-badge{display:inline-block;font-size:10px;font-weight:600;letter-spacing:1px;padding:1px 7px;
   border-radius:4px;text-transform:uppercase}
 #sysp-temp{font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:0.5px}
-#sysp-divider{height:1px;background:rgba(255,255,255,0.04);margin:8px 0}
-.sysp-row{font-size:10px;color:rgba(255,255,255,0.35);letter-spacing:0.5px;margin-bottom:5px}
+#sysp-divider{height:1px;background:rgba(255,255,255,0.05);margin:8px 0}
+.sysp-row{font-size:10px;color:rgba(255,255,255,0.35);letter-spacing:0.5px;margin-bottom:6px}
 .sysp-row span{color:rgba(255,255,255,0.55)}
 .sysp-indicator{color:rgba(220,180,60,0.6);font-size:10px;letter-spacing:0.5px;margin-bottom:3px}
+/* planet list */
+#sysp-planet-list{margin-top:4px}
+.sysp-pitem{display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:6px 5px;
+  border-radius:7px;background:rgba(255,255,255,0.03);cursor:default}
+.sysp-pthumb{width:48px;height:48px;border-radius:5px;object-fit:cover;flex-shrink:0;
+  border:1px solid rgba(255,255,255,0.07)}
+.sysp-pinfo{flex:1;min-width:0}
+.sysp-pname{font-size:10px;color:rgba(255,255,255,0.65);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;margin-bottom:3px}
+.sysp-ptype{font-size:8px;font-weight:700;letter-spacing:0.8px;padding:1px 5px;
+  border-radius:3px;text-transform:uppercase}
+.sysp-phab{font-size:9px;color:rgba(255,255,255,0.28);margin-top:3px}
+.sysp-pchecks{font-size:9px;display:flex;flex-direction:column;gap:1px;
+  color:rgba(255,255,255,0.15);text-align:center;flex-shrink:0}
+.sysp-pchecks span{display:block}.sysp-pchecks .done{color:rgba(80,210,150,0.75)}
+#sysp-anomalies{margin-top:8px;border-top:1px solid rgba(255,255,255,0.04);padding-top:8px}
 
 /* ── v5 Event Card ── */
 #event-card{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.96);width:92%;max-width:400px;
@@ -469,8 +487,11 @@ body.ui-hidden #fullscreen-btn,body.ui-hidden #tune-panel{
   </div>
   <div id="sysp-divider"></div>
   <div class="sysp-row" id="sysp-planets"></div>
-  <div class="sysp-indicator" id="sysp-belt"></div>
-  <div class="sysp-indicator" id="sysp-comets"></div>
+  <div id="sysp-planet-list"></div>
+  <div id="sysp-anomalies">
+    <div class="sysp-indicator" id="sysp-belt"></div>
+    <div class="sysp-indicator" id="sysp-comets"></div>
+  </div>
 </div>
 
 <div id="minimap-wrap">

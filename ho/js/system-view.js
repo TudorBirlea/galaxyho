@@ -935,6 +935,8 @@ export function updateSystemView(time) {
       const cosE = Math.cos(E), sinE = Math.sin(E);
       const ta = Math.atan2(Math.sqrt(1 - e * e) * sinE, cosE - e);
       const r = a * (1 - e * cosE);
+      // Fade out when comet enters star corona
+      const coronaFade = Math.min(Math.max((r - 3.5) / 2.5, 0.0), 1.0);
       const ci = Math.cos(def.inclination), si = Math.sin(def.inclination);
       const lx = Math.cos(ta) * r, lz = Math.sin(ta) * r;
       const cx = lx, cy = lz * si, cz = lz * ci;
@@ -953,7 +955,7 @@ export function updateSystemView(time) {
       c.comaSprite.position.set(cx, cy, cz);
       const comaSize = (1.2 + activity * 0.8) * 1.5;
       c.comaSprite.scale.setScalar(comaSize);
-      c.comaSprite.material.opacity = Math.min(0.7 + activity * 0.15, 1.0);
+      c.comaSprite.material.opacity = Math.min(0.7 + activity * 0.15, 1.0) * coronaFade;
 
       // Base tail length
       const baseLen = 2.0 + 5.0 / Math.max(r, 1.0);
@@ -985,7 +987,7 @@ export function updateSystemView(time) {
         // Sparkle
         const sv = Math.sin((i + def.seed) * 127.1 + time * 3.0) * 43758.5;
         al *= (1.0 - cCfg.sparkleAmt * 0.5 + cCfg.sparkleAmt * (sv - Math.floor(sv)));
-        iAlpha[i] = al;
+        iAlpha[i] = al * coronaFade;
       }
       iGeo.attributes.position.needsUpdate = true;
       iGeo.attributes.aAlpha.needsUpdate = true;
@@ -1019,7 +1021,7 @@ export function updateSystemView(time) {
         if (frac < 0.15) al *= 1.0 + (1.0 - frac / 0.15) * 0.6;
         const sv2 = Math.sin((i + def.seed + 500) * 127.1 + time * 3.0) * 43758.5;
         al *= (1.0 - cCfg.sparkleAmt * 0.5 + cCfg.sparkleAmt * (sv2 - Math.floor(sv2)));
-        dAlpha[i] = al;
+        dAlpha[i] = al * coronaFade;
       }
       dGeo.attributes.position.needsUpdate = true;
       dGeo.attributes.aAlpha.needsUpdate = true;

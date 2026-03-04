@@ -3,6 +3,7 @@ import { CONFIG, VERSION } from './config.js?v=7.0';
 import { app } from './app.js?v=7.0';
 import { getMaxFuel, getUpgradeEffects, calculateJumpFuelCost } from './gameplay.js?v=7.0';
 import { getDockedPlanetId, swapShipModel, shipModelCache, shipModelsReady } from './ship.js?v=7.0';
+import { capturePlanetSnapshot } from './system-view.js?v=7.0';
 import { saveState } from './state.js?v=7.0';
 
 const tooltipEl = document.getElementById('tooltip');
@@ -460,6 +461,7 @@ const syspTemp = document.getElementById('sysp-temp');
 const syspPlanets = document.getElementById('sysp-planets');
 const syspBelt = document.getElementById('sysp-belt');
 const syspComets = document.getElementById('sysp-comets');
+const syspPlanetList = document.getElementById('sysp-planet-list');
 
 let _currentSysStar = null;
 
@@ -508,6 +510,38 @@ export function showSystemPanel(star) {
   syspBelt.textContent = star.hasBelt ? '◆ Asteroid Belt' : '';
   syspComets.textContent = star.hasComets ? '◆ Comet Activity' : '';
 
+  // Build planet thumbnail list
+  const PTYPE_COL = {
+    terran:'#4aaa88', desert:'#cc8844', ice:'#66ccee',
+    gas_giant:'#4488cc', lava:'#cc4422', ocean:'#3388aa', water:'#4466aa',
+  };
+  const planets = app.systemPlanets || [];
+  syspPlanetList.innerHTML = '';
+  for (const pe of planets) {
+    const p = pe.data;
+    const key = `${star.id}-${p.id}`;
+    const actions = app.state.planetActions[key] || {};
+    const snap = capturePlanetSnapshot(pe);
+    const col = PTYPE_COL[p.type] || '#888';
+    const label = p.type.replace('_', ' ');
+    const item = document.createElement('div');
+    item.className = 'sysp-pitem';
+    item.dataset.planetKey = key;
+    item.innerHTML = `
+      <img class="sysp-pthumb" src="${snap}">
+      <div class="sysp-pinfo">
+        <div class="sysp-pname">${p.name}</div>
+        <span class="sysp-ptype" style="background:${col}22;color:${col}">${label}</span>
+        <div class="sysp-phab">hab <span style="color:rgba(255,255,255,0.6)">${p.habitability}</span></div>
+      </div>
+      <div class="sysp-pchecks">
+        <span class="${actions.scanned ? 'done' : ''}">S</span>
+        <span class="${actions.mined ? 'done' : ''}">M</span>
+        <span class="${actions.explored ? 'done' : ''}">E</span>
+      </div>`;
+    syspPlanetList.appendChild(item);
+  }
+
   updateSystemPanel();
   systemPanel.style.display = 'block';
 }
@@ -521,13 +555,21 @@ export function updateSystemPanel() {
   if (!_currentSysStar) return;
   const planets = app.systemPlanets || [];
   const total = planets.length;
-  let explored = 0;
+  let complete = 0;
   for (const p of planets) {
     const key = `${_currentSysStar.id}-${p.data.id}`;
     const actions = app.state.planetActions[key];
-    if (actions && actions.scanned && actions.mined && actions.explored) explored++;
+    if (actions && actions.scanned && actions.mined && actions.explored) complete++;
   }
-  syspPlanets.innerHTML = `<span>${total}</span> planets · <span>${explored}</span> complete`;
+  syspPlanets.innerHTML = `<span>${total}</span> planets · <span>${complete}</span> complete`;
+  // Refresh checkmarks on existing planet items
+  for (const item of syspPlanetList.querySelectorAll('.sysp-pitem')) {
+    const actions = app.state.planetActions[item.dataset.planetKey] || {};
+    const spans = item.querySelectorAll('.sysp-pchecks span');
+    if (spans[0]) spans[0].className = actions.scanned ? 'done' : '';
+    if (spans[1]) spans[1].className = actions.mined ? 'done' : '';
+    if (spans[2]) spans[2].className = actions.explored ? 'done' : '';
+  }
 }
 
 // ── Ship Picker ──
@@ -560,13 +602,22 @@ function renderShipPreview(shipId) {
   if (!model) return null;
 
   const clone = model.clone();
-  // Convert to lit materials for preview (MeshBasicMaterial ignores lights)
+  // Convert to MeshStandardMaterial for preview (handles both legacy and new ShaderMaterial)
   clone.traverse((child) => {
     if (child.isMesh) {
       const convertToLit = (mat) => {
-        const opts = { color: mat.color ? mat.color.clone() : new THREE.Color(0x8ab4c8) };
-        if (mat.map) opts.map = mat.map;
-        if (mat.vertexColors) opts.vertexColors = true;
+        const opts = {};
+        if (mat.isShaderMaterial) {
+          // Extract from our custom lit shader uniforms
+          if (mat.uniforms && mat.uniforms.map) opts.map = mat.uniforms.map.value;
+          else if (mat.uniforms && mat.uniforms.solidColor) opts.color = mat.uniforms.solidColor.value.clone();
+          else opts.color = new THREE.Color(0x8ab4c8);
+          if (mat.vertexColors) opts.vertexColors = true;
+        } else {
+          opts.color = mat.color ? mat.color.clone() : new THREE.Color(0x8ab4c8);
+          if (mat.map) opts.map = mat.map;
+          if (mat.vertexColors) opts.vertexColors = true;
+        }
         if (mat.transparent) { opts.transparent = true; opts.opacity = mat.opacity; }
         return new THREE.MeshStandardMaterial(opts);
       };
