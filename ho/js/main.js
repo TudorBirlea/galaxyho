@@ -537,6 +537,7 @@ function animate() {
     // v5: Ship update
     if (dt > 0 && dt < 0.5) {
       updateShip(t, dt);
+      if (app.shipFieldMat) app.shipFieldMat.uniforms.u_time.value = t;
       // Solar regen upgrade
       updateSolarRegen(dt, app.state);
       updateFuelGauge(app.state);

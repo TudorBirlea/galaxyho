@@ -8,6 +8,37 @@ import { getUpgradeEffects } from './gameplay.js?v=7.0';
 const _lookAt = new THREE.Vector3();
 const _origin = new THREE.Vector3();
 
+function createFieldMaterial() {
+  return new THREE.ShaderMaterial({
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        vViewDir = normalize(-mvPos.xyz);
+        gl_Position = projectionMatrix * mvPos;
+      }`,
+    fragmentShader: `
+      uniform float u_time;
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        float fresnel = 1.0 - abs(dot(normalize(vNormal), normalize(vViewDir)));
+        fresnel = pow(fresnel, 1.6);
+        float pulse = 0.65 + 0.35 * sin(u_time * 1.4);
+        float shimmer = 0.92 + 0.08 * sin(u_time * 9.0 + vNormal.y * 18.0);
+        vec3 col = mix(vec3(0.15, 0.85, 0.75), vec3(0.3, 0.55, 1.0), fresnel);
+        float alpha = fresnel * pulse * shimmer * 0.55;
+        if (alpha < 0.008) discard;
+        gl_FragColor = vec4(col, alpha);
+      }`,
+    uniforms: { u_time: { value: 0 } },
+    transparent: true, depthWrite: false, side: THREE.FrontSide,
+    blending: THREE.AdditiveBlending,
+  });
+}
+
 // ────────────────────────────────────────────────────────────
 // Preload all GLB ship models (cached for reuse across system views)
 // ────────────────────────────────────────────────────────────
@@ -112,6 +143,13 @@ export function createShipMesh() {
   group.add(makeGlow(0, 0, -half * 0.9, half * 0.35));       // main engine
   group.add(makeGlow(half * 0.25, 0, -half * 0.8, half * 0.22)); // right nacelle
   group.add(makeGlow(-half * 0.25, 0, -half * 0.8, half * 0.22)); // left nacelle
+
+  // Hull energy field
+  const fieldMat = createFieldMaterial();
+  const fieldMesh = new THREE.Mesh(new THREE.SphereGeometry(meshScale * 0.9, 16, 12), fieldMat);
+  fieldMesh.renderOrder = 6;
+  group.add(fieldMesh);
+  app.shipFieldMat = fieldMat;
 
   group.renderOrder = 5;
   systemGroup.add(group);
@@ -638,6 +676,13 @@ export function swapShipModel() {
   app.shipMesh.add(makeGlow(0, 0, -half * 0.9, half * 0.35));
   app.shipMesh.add(makeGlow(half * 0.25, 0, -half * 0.8, half * 0.22));
   app.shipMesh.add(makeGlow(-half * 0.25, 0, -half * 0.8, half * 0.22));
+
+  // Rebuild hull energy field at new scale
+  const fieldMat = createFieldMaterial();
+  const fieldMesh = new THREE.Mesh(new THREE.SphereGeometry(meshScale * 0.9, 16, 12), fieldMat);
+  fieldMesh.renderOrder = 6;
+  app.shipMesh.add(fieldMesh);
+  app.shipFieldMat = fieldMat;
 }
 
 export function clearShip() {

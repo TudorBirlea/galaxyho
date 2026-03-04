@@ -1,4 +1,4 @@
-export const VERSION = '7.2';
+export const VERSION = '7.3';
 
 export const CONFIG = {
   ships: [
@@ -211,7 +211,7 @@ export const CONFIG = {
     cameraFollowLerp: 0.05,
     cameraOffset: [0, 4, 8],
     parkingOrbitBuffer: 4,
-    parkingOrbitSpeed: 0.18,
+    parkingOrbitSpeed: 0.09,
     burnDuration: 0.35,
     approachSpeed: 1.5,
     dockedOrbitMult: 2.5,
