@@ -8,6 +8,56 @@ import { getUpgradeEffects } from './gameplay.js?v=7.0';
 const _lookAt = new THREE.Vector3();
 const _origin = new THREE.Vector3();
 
+function convertToLitMaterial(mat) {
+  const hasMap = !!mat.map;
+  const hasVtx = !!mat.vertexColors;
+  const baseColor = (mat.color ? mat.color.clone() : new THREE.Color(0x8ab4c8));
+
+  const vert = `
+    varying vec3 vNormal;
+    ${hasMap ? 'varying vec2 vUv;' : ''}
+    ${hasVtx ? 'varying vec3 vColor;' : ''}
+    void main(){
+      vNormal=normalize(normalMatrix*normal);
+      ${hasMap ? 'vUv=uv;' : ''}
+      ${hasVtx ? 'vColor=color;' : ''}
+      gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+    }`;
+
+  const frag = `
+    precision highp float;
+    varying vec3 vNormal;
+    ${hasMap ? 'varying vec2 vUv; uniform sampler2D map;' : ''}
+    ${hasVtx ? 'varying vec3 vColor;' : ''}
+    ${!hasMap && !hasVtx ? 'uniform vec3 solidColor;' : ''}
+    void main(){
+      vec3 n=normalize(vNormal);
+      // key light (upper-front) + fill light (lower-back)
+      float d1=max(dot(n,normalize(vec3(0.5,0.8,0.6))),0.0);
+      float d2=max(dot(n,normalize(vec3(-0.3,-0.5,0.2))),0.0)*0.22;
+      float light=0.18+0.82*d1+d2;
+      ${hasMap ? 'vec4 base=texture2D(map,vUv);' :
+        hasVtx ? 'vec4 base=vec4(vColor,1.0);' :
+                 'vec4 base=vec4(solidColor,1.0);'}
+      // S-curve contrast boost
+      vec3 col=mix(base.rgb,base.rgb*base.rgb*(3.0-2.0*base.rgb),0.5);
+      gl_FragColor=vec4(clamp(col*light,0.0,1.0),base.a);
+    }`;
+
+  const uniforms = {};
+  if (hasMap) uniforms.map = { value: mat.map };
+  if (!hasMap && !hasVtx) uniforms.solidColor = { value: baseColor };
+
+  const out = new THREE.ShaderMaterial({
+    vertexShader: vert, fragmentShader: frag, uniforms,
+    vertexColors: hasVtx,
+    transparent: mat.transparent || false,
+    side: mat.side !== undefined ? mat.side : THREE.FrontSide,
+  });
+  mat.dispose();
+  return out;
+}
+
 function createFieldMaterial() {
   return new THREE.ShaderMaterial({
     vertexShader: `
@@ -62,23 +112,10 @@ function loadShipModel(shipDef) {
 
       model.traverse((child) => {
         if (child.isMesh) {
-          const convert = (mat) => {
-            const opts = {};
-            if (mat.map) opts.map = mat.map;
-            else if (mat.color) opts.color = mat.color.clone();
-            else opts.color = new THREE.Color(0x8ab4c8);
-            if (mat.vertexColors) opts.vertexColors = true;
-            if (mat.transparent) { opts.transparent = true; opts.opacity = mat.opacity; }
-            if (mat.alphaMap) opts.alphaMap = mat.alphaMap;
-            const basic = new THREE.MeshBasicMaterial(opts);
-            if (mat.side !== undefined) basic.side = mat.side;
-            mat.dispose();
-            return basic;
-          };
           if (Array.isArray(child.material)) {
-            child.material = child.material.map(convert);
+            child.material = child.material.map(convertToLitMaterial);
           } else {
-            child.material = convert(child.material);
+            child.material = convertToLitMaterial(child.material);
           }
         }
       });
