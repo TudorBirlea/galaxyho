@@ -145,9 +145,10 @@ export function buildSystemView(star) {
     const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowTex, color: glowColor,
       transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending,
-      depthWrite: false, depthTest: false,
+      depthWrite: false, depthTest: true,
     }));
     glowSprite.scale.setScalar(starRadius * 7);
+    glowSprite.renderOrder = 4;
     systemGroup.add(glowSprite);
     app.starGlowSprite = glowSprite;
   }
