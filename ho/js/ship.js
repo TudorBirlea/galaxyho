@@ -184,11 +184,11 @@ export function createShipMesh() {
   // Hull energy field
   const fieldMat = createFieldMaterial();
   const fieldMesh = new THREE.Mesh(new THREE.SphereGeometry(meshScale * 0.9, 16, 12), fieldMat);
-  fieldMesh.renderOrder = 6;
+  fieldMesh.renderOrder = 3;
   group.add(fieldMesh);
   app.shipFieldMat = fieldMat;
 
-  group.renderOrder = 5;
+  group.renderOrder = 2;
   systemGroup.add(group);
   app.shipMesh = group;
 
@@ -226,7 +226,7 @@ export function createShipMesh() {
 
   const tPoints = new THREE.Points(tGeo, tMat);
   tPoints.frustumCulled = false;
-  tPoints.renderOrder = 4;
+  tPoints.renderOrder = 2;
   systemGroup.add(tPoints);
   app.shipThrusterPoints = tPoints;
   app.shipThrusterPoints.userData = { ages: tAges, nextSlot: 0 };
@@ -717,7 +717,7 @@ export function swapShipModel() {
   // Rebuild hull energy field at new scale
   const fieldMat = createFieldMaterial();
   const fieldMesh = new THREE.Mesh(new THREE.SphereGeometry(meshScale * 0.9, 16, 12), fieldMat);
-  fieldMesh.renderOrder = 6;
+  fieldMesh.renderOrder = 3;
   app.shipMesh.add(fieldMesh);
   app.shipFieldMat = fieldMat;
 }

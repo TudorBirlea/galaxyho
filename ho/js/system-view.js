@@ -149,7 +149,7 @@ export function buildSystemView(star) {
       depthWrite: false, depthTest: true,
     }));
     glowSprite.scale.setScalar(starRadius * 7);
-    glowSprite.renderOrder = 4;
+    glowSprite.renderOrder = -1;
     systemGroup.add(glowSprite);
     app.starGlowSprite = glowSprite;
   }
