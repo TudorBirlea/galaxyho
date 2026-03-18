@@ -125,34 +125,10 @@ export function buildSystemView(star) {
   depthSphere.renderOrder = 0;
   systemGroup.add(depthSphere);
 
-  // Star glow sprite — additive billboard for ambient scene fill
-  if (star.remnantType !== 'blackHole') {
-    const glowCanvas = document.createElement('canvas');
-    glowCanvas.width = 256; glowCanvas.height = 256;
-    const gCtx = glowCanvas.getContext('2d');
-    const grad = gCtx.createRadialGradient(128, 128, 0, 128, 128, 128);
-    grad.addColorStop(0, 'rgba(255,230,180,1.0)');
-    grad.addColorStop(0.08, 'rgba(255,210,150,0.7)');
-    grad.addColorStop(0.25, 'rgba(255,180,100,0.25)');
-    grad.addColorStop(0.5, 'rgba(255,150,60,0.08)');
-    grad.addColorStop(0.8, 'rgba(255,120,40,0.02)');
-    grad.addColorStop(1, 'rgba(255,100,30,0)');
-    gCtx.fillStyle = grad;
-    gCtx.fillRect(0, 0, 256, 256);
-    const glowTex = new THREE.CanvasTexture(glowCanvas);
-    const glowColor = star.remnantType
-      ? new THREE.Color(0.6, 0.7, 1.0) // neutron/white dwarf: blue-white
-      : new THREE.Color(sc.euvTint[0], sc.euvTint[1], sc.euvTint[2]);
-    const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: glowTex, color: glowColor,
-      transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending,
-      depthWrite: false, depthTest: true,
-    }));
-    glowSprite.scale.setScalar(starRadius * 7);
-    glowSprite.renderOrder = -1;
-    systemGroup.add(glowSprite);
-    app.starGlowSprite = glowSprite;
-  }
+  // Star glow handled entirely by the ray-marched shader (corona glow + prominences).
+  // A separate glow sprite was removed in v7.20 — it conflicted with the depth sphere
+  // (transparent objects always render after opaques in Three.js, causing a black circle
+  // where the depth sphere blocked the glow, or planet bleed-through with depthTest off).
 
   // v3: Neutron star beams
   if (star.remnantType === 'neutronStar') {

@@ -67,7 +67,7 @@ _extras/               — Reference files, backups, experiments (gitignored)
 - Atmosphere: Ray-marched Rayleigh scattering (12 steps, BackSide sphere shell, per-type scatter config)
 - Single THREE.Scene with galaxyGroup/systemGroup toggled via `.visible`
 - View transitions: CSS overlay fade (0.4s black → swap groups → fade out)
-- Star glow: additive Sprite billboard per star (canvas radial gradient, spectral-colored, depthTest on, renderOrder 4, scale ~7× starRadius), skipped for black holes
+- Star glow: handled by the ray-marched star shader itself (corona glow + prominences); separate glow sprite removed in v7.20 (Three.js opaque-before-transparent ordering made it incompatible with the depth sphere)
 - System starfield: 2000 Points in sphere (r 60–360), boosted sizes (1.0–3.5) and alpha (1.2×) for visibility
 - Bloom: enabled in galaxy view (threshold 0.35), disabled in system view (star shader handles its own glow)
 - Bloom tint pass: re-saturates bloom areas to preserve spectral star colors (galaxy view only)
@@ -210,5 +210,6 @@ terran, desert, ice, gas_giant, lava, ocean, water — hybrid texture-mapped wit
 - **v7.15**: Black hole disk-shadow conflict fix — when ray crosses disk before capture, show accumulated disk color (disk physically in front of event horizon) instead of black; discard background-only pixels so planets and space show through naturally
 - **v7.16**: Black hole depth sphere enlargement — apparent BH shadow radius ~2.6× event horizon due to photon sphere lensing; increase depth sphere to 3× starRadius so planets properly occlude behind visible shadow
 - **v7.17**: Star glow occlusion fix — enable depthTest on star glow sprite and render after planets (renderOrder 4) so planet geometry properly occludes star halo instead of glow bleeding through
-- **v7.19**: Fix star glow black circle + ship star occlusion — glow sprite renderOrder -1 (before depth sphere) eliminates black circle on rotation; ship/field/thruster renderOrder lowered (2/3/2) so depth sphere properly occludes ship behind star
+- **v7.20**: Remove star glow sprite — eliminated entirely; Three.js renders all opaques (including depth sphere) before transparents regardless of renderOrder, making it impossible for the transparent glow sprite to avoid both the black circle (depth sphere blocking) and planet bleed-through; star shader's built-in corona glow is sufficient; ship renderOrder lowered (2/3/2) so depth sphere properly occludes ship behind star
+- **v7.19**: (superseded by v7.20)
 - **v7.18**: Cluster halos + system nebula gas — soft additive glow billboards around each star cluster in galaxy view (per-cluster centroid + radius sizing, pulsing animation, configurable intensity via CONFIG.clusterHalos); faint volumetric nebula gas wisps in system view background (5 FBM noise billboard planes with 3 color presets, configurable density/noise scale/animation/edge falloff via CONFIG.systemNebulaGas); experiment page overhaul with VFX_SETTINGS tuning system (all effects use uniforms for live parameter tweaking, slider + color picker UI per effect)
