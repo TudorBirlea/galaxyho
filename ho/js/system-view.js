@@ -3,7 +3,8 @@ import { CONFIG } from './config.js?v=7.0';
 import { STAR_VERT, STAR_FRAG, PLANET_VERT, PLANET_FRAG, RING_VERT, RING_FRAG,
          ATMOS_VERT, ATMOS_FRAG, BLACK_HOLE_FRAG,
          COMET_TAIL_VERT, COMET_TAIL_FRAG,
-         STATUS_RING_VERT, STATUS_RING_FRAG } from './shaders.js?v=7.0';
+         STATUS_RING_VERT, STATUS_RING_FRAG,
+         NOISE_GLSL } from './shaders.js?v=7.0';
 import { mulberry32 } from './utils.js?v=7.0';
 import { generatePlanets, generateAsteroidBelt, generateComets } from './data.js?v=7.0';
 import { systemGroup, camera, renderer } from './engine.js?v=7.0';
@@ -745,6 +746,49 @@ export function buildSystemView(star) {
   systemGroup.add(new THREE.Points(sGeo, sfMat));
   app.starfieldMat = sfMat;
 
+  // v7.18: Nebula gas wisps — background atmosphere
+  app.nebulaGasMeshes = [];
+  const gasCfg = CONFIG.systemNebulaGas;
+  const gasColors = gasCfg.colors;
+  for (let i = 0; i < gasCfg.count; i++) {
+    const size = gasCfg.sizeMin + Math.random() * (gasCfg.sizeMax - gasCfg.sizeMin);
+    const col = new THREE.Color(gasColors[i % gasColors.length][0], gasColors[i % gasColors.length][1], gasColors[i % gasColors.length][2]);
+    const gasMat = new THREE.ShaderMaterial({
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+      fragmentShader: `precision highp float;
+        varying vec2 vUv;
+        uniform vec3 u_color;
+        uniform float u_seed, u_time, u_density, u_colorMult, u_noiseScale, u_animSpeed, u_edgeFalloff;
+        ${NOISE_GLSL}
+        float fbm3(vec3 p){float f=0.,a=.5;for(int i=0;i<3;i++){f+=a*snoise(p);p*=2.1;a*=.48;}return f;}
+        void main(){
+          vec2 p = (vUv-0.5)*2.0;
+          float r = length(p);
+          float edge = 1.0 - smoothstep(u_edgeFalloff, 1.0, r);
+          float n = fbm3(vec3(p*u_noiseScale+u_seed, u_time*u_animSpeed))*0.5+0.5;
+          float density = n*edge*u_density;
+          if(density<0.002)discard;
+          gl_FragColor = vec4(u_color*u_colorMult, density);
+        }`,
+      uniforms: {
+        u_color: { value: col },
+        u_seed: { value: Math.random() * 100 },
+        u_time: { value: 0 },
+        u_density: { value: gasCfg.density },
+        u_colorMult: { value: gasCfg.colorMult },
+        u_noiseScale: { value: gasCfg.noiseScale },
+        u_animSpeed: { value: gasCfg.animSpeed },
+        u_edgeFalloff: { value: gasCfg.edgeFalloff },
+      },
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    });
+    const gasMesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), gasMat);
+    gasMesh.position.set((Math.random()-0.5)*20, (Math.random()-0.5)*10, (Math.random()-0.5)*20 - 15);
+    gasMesh.rotation.set(Math.random()*0.5, Math.random()*Math.PI, Math.random()*0.5);
+    systemGroup.add(gasMesh);
+    app.nebulaGasMeshes.push(gasMesh);
+  }
+
   // v5: Ship mesh
   createShipMesh();
   positionShipAtStar(starRadius);
@@ -770,6 +814,7 @@ export function clearSystemView() {
   app.starGlowSprite = null;
   app.starfieldMat = null;
   app.cometEntries = [];
+  app.nebulaGasMeshes = [];
   clearShip();
 }
 
@@ -1036,6 +1081,12 @@ export function updateSystemView(time) {
 
       c.prevX = cx; c.prevY = cy; c.prevZ = cz;
     }
+  }
+
+  // v7.18: Update nebula gas (time + billboard)
+  for (const mesh of app.nebulaGasMeshes) {
+    mesh.material.uniforms.u_time.value = time;
+    mesh.lookAt(camera.position);
   }
 }
 

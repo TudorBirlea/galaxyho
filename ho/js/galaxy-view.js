@@ -21,6 +21,7 @@ export function buildGalaxyView(galaxy, state) {
   app.bgStarLayers = [];
   app.dustLaneMeshes = [];
   app.warpTrailEntries = [];
+  app.clusterHaloMeshes = [];
 
   const palette = getPaletteForState(state);
 
@@ -104,6 +105,48 @@ export function buildGalaxyView(galaxy, state) {
       galaxyGroup.add(mesh);
       app.nebulaMeshes.push(mesh);
     }
+  }
+
+  // ── v7.18: Cluster halos — soft glow around each star cluster ──
+  app.clusterHaloMeshes = [];
+  const haloCfg = CONFIG.clusterHalos;
+  const clusterMap = {};
+  for (const s of galaxy.stars) {
+    const cid = s.clusterId !== undefined ? s.clusterId : 0;
+    if (!clusterMap[cid]) clusterMap[cid] = [];
+    clusterMap[cid].push(s);
+  }
+  for (const group of Object.values(clusterMap)) {
+    let cx = 0, cy = 0, cz = 0, maxR = 0;
+    for (const s of group) { cx += s.position.x; cy += s.position.y; cz += s.position.z; }
+    cx /= group.length; cy /= group.length; cz /= group.length;
+    for (const s of group) {
+      const d = Math.sqrt((s.position.x-cx)**2 + (s.position.y-cy)**2 + (s.position.z-cz)**2);
+      if (d > maxR) maxR = d;
+    }
+    const radius = maxR || 10;
+    const size = radius * haloCfg.sizeMultiplier;
+    const haloMat = new THREE.ShaderMaterial({
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+      fragmentShader: `precision highp float;
+        varying vec2 vUv;
+        uniform float u_time, u_intensity;
+        void main(){
+          vec2 c = vUv - 0.5;
+          float r = length(c);
+          float glow = (exp(-r*r*${haloCfg.innerGaussian.toFixed(1)})*0.35 + exp(-r*r*${haloCfg.outerGaussian.toFixed(1)})*0.15) * u_intensity;
+          glow *= 0.88 + 0.12*sin(u_time*0.7 + r*8.0);
+          vec3 col = vec3(0.35,0.5,0.85) * glow;
+          gl_FragColor = vec4(col, glow * 0.7);
+        }`,
+      uniforms: { u_time: { value: 0 }, u_intensity: { value: haloCfg.intensity } },
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    });
+    const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), haloMat);
+    haloMesh.position.set(cx, cy - 0.5, cz);
+    haloMesh.renderOrder = -1;
+    galaxyGroup.add(haloMesh);
+    app.clusterHaloMeshes.push(haloMesh);
   }
 
   // ── v3: Dust lanes — dark absorbing regions ──

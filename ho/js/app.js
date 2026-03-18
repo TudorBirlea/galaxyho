@@ -35,4 +35,7 @@ export const app = {
   eventCardVisible: false,   // Event card modal open
   upgradesPanelVisible: false, // Upgrade panel open
   currentEvent: null,        // Active EventInstance
+  // ── v7.18 additions ──
+  clusterHaloMeshes: [],     // Cluster halo billboards in galaxy view
+  nebulaGasMeshes: [],       // Nebula gas planes in system view
 };

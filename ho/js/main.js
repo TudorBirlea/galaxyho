@@ -554,6 +554,12 @@ function animate() {
       mesh.lookAt(camera.position);
     }
 
+    // v7.18: Update cluster halos (time + billboard)
+    for (const mesh of app.clusterHaloMeshes) {
+      mesh.material.uniforms.u_time.value = t;
+      mesh.lookAt(camera.position);
+    }
+
     // v3: Update dust lane time
     for (const mesh of app.dustLaneMeshes) {
       mesh.material.uniforms.u_time.value = t;

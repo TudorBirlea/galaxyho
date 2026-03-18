@@ -1,4 +1,4 @@
-export const VERSION = '7.17';
+export const VERSION = '7.18';
 
 export const CONFIG = {
   ships: [
@@ -76,6 +76,25 @@ export const CONFIG = {
   nebulaCount: 6,
   nebulaLayers: 3,
   nebulaLayerSpread: 12,
+  // ── v7.18: Cluster halos in galaxy view ──
+  clusterHalos: {
+    intensity: 0.35,
+    innerGaussian: 3.0,
+    outerGaussian: 8.0,
+    sizeMultiplier: 3.0,
+  },
+  // ── v7.18: Nebula gas wisps in system view ──
+  systemNebulaGas: {
+    count: 5,
+    sizeMin: 40,
+    sizeMax: 80,
+    density: 0.055,
+    colorMult: 1.5,
+    noiseScale: 0.8,
+    animSpeed: 0.003,
+    edgeFalloff: 0.4,
+    colors: [[0.25, 0.15, 0.4], [0.15, 0.25, 0.35], [0.3, 0.18, 0.12]],
+  },
   // ── v3 additions ──
   pulsars: {
     chance: 0.04,
