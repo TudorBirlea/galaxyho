@@ -115,15 +115,20 @@ export function buildSystemView(star) {
   app.systemStarMesh.renderOrder = star.remnantType === 'blackHole' ? 10 : -1;
   systemGroup.add(app.systemStarMesh);
 
-  // Invisible depth sphere — prevents planets rendering inside/behind star surface.
-  // BH apparent shadow is ~2.6× event horizon due to photon sphere lensing; use 3× for safety.
-  const depthRadius = star.remnantType === 'blackHole' ? starRadius * 3 : starRadius;
-  const depthSphere = new THREE.Mesh(
-    new THREE.SphereGeometry(depthRadius, 32, 32),
-    new THREE.MeshBasicMaterial({ colorWrite: false })
-  );
-  depthSphere.renderOrder = 0;
-  systemGroup.add(depthSphere);
+  // Invisible depth sphere — only needed for black holes to prevent planets rendering
+  // inside the shadow. BH apparent shadow is ~2.6× event horizon due to photon sphere
+  // lensing; use 3× for safety. Normal stars don't need it — the fullscreen quad covers
+  // the star area, and the depth sphere was causing a visible black circle artifact
+  // (blocking transparent objects like the starfield Points behind it).
+  if (star.remnantType === 'blackHole') {
+    const depthRadius = starRadius * 3;
+    const depthSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(depthRadius, 32, 32),
+      new THREE.MeshBasicMaterial({ colorWrite: false })
+    );
+    depthSphere.renderOrder = 0;
+    systemGroup.add(depthSphere);
+  }
 
   // Star glow handled entirely by the ray-marched shader (corona glow + prominences).
   // A separate glow sprite was removed in v7.20 — it conflicted with the depth sphere
